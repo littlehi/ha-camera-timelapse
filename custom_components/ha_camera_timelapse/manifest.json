@@ -1,0 +1,12 @@
+{
+  "domain": "ha_camera_timelapse",
+  "name": "Camera Timelapse",
+  "version": "0.1.0",
+  "documentation": "https://github.com/yourusername/ha-camera-timelapse",
+  "issue_tracker": "https://github.com/yourusername/ha-camera-timelapse/issues",
+  "dependencies": [],
+  "codeowners": ["@yourusername"],
+  "config_flow": true,
+  "iot_class": "local_polling",
+  "requirements": []
+}

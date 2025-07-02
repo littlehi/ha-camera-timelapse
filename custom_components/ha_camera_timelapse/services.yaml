@@ -1,0 +1,58 @@
+start_timelapse:
+  name: Start Timelapse
+  description: Start recording a timelapse from a camera entity.
+  target:
+    entity:
+      domain: switch
+      integration: ha_camera_timelapse
+  fields:
+    entity_id:
+      name: Camera Entity
+      description: The camera entity to capture frames from.
+      required: true
+      selector:
+        entity:
+          domain: camera
+    interval:
+      name: Interval
+      description: Time between frames in seconds.
+      example: "60"
+      default: 60
+      selector:
+        number:
+          min: 1
+          max: 3600
+          unit_of_measurement: seconds
+    duration:
+      name: Duration
+      description: Total duration of timelapse recording in minutes.
+      example: "1440"
+      default: 1440
+      selector:
+        number:
+          min: 1
+          max: 10080
+          unit_of_measurement: minutes
+    output_path:
+      name: Output Path
+      description: Path where timelapse files will be stored.
+      example: "/config/timelapses"
+      selector:
+        text:
+
+stop_timelapse:
+  name: Stop Timelapse
+  description: Stop the current timelapse recording.
+  target:
+    entity:
+      domain: switch
+      integration: ha_camera_timelapse
+  fields:
+    entity_id:
+      name: Entity
+      description: The timelapse switch entity to stop.
+      required: true
+      selector:
+        entity:
+          domain: switch
+          integration: ha_camera_timelapse

@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Camera Timelapse Setup",
+        "description": "Select a camera entity and configure default settings for timelapse recording.",
+        "data": {
+          "camera_entity_id": "Camera Entity",
+          "default_interval": "Default Interval (seconds)",
+          "default_duration": "Default Duration (minutes)",
+          "default_output_path": "Default Output Path"
+        }
+      }
+    },
+    "error": {
+      "not_a_camera": "Selected entity is not a camera",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This camera is already configured for timelapse",
+      "no_cameras": "No camera entities found in your system"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Camera Timelapse Options",
+        "description": "Adjust default settings for timelapse recording.",
+        "data": {
+          "default_interval": "Default Interval (seconds)",
+          "default_duration": "Default Duration (minutes)",
+          "default_output_path": "Default Output Path"
+        }
+      }
+    }
+  }
+}
