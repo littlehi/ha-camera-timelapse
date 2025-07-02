@@ -172,15 +172,47 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         await self.async_request_refresh()
         
     async def stop_timelapse(self, entity_id: str) -> None:
-        """Stop timelapse recording."""
+        """Stop timelapse recording and generate video with captured frames."""
         if entity_id in self._timelapse_tasks and not self._timelapse_tasks[entity_id].done():
+            # Get frame directory and output file path before cancelling task
+            frame_dir = None
+            output_file = None
+            if entity_id in self._timelapse_data:
+                frame_dir = self._timelapse_data[entity_id].get("frame_dir")
+                output_file = self._timelapse_data[entity_id].get("output_file")
+                
+                # Update status to processing
+                self._timelapse_data[entity_id]["status"] = STATUS_PROCESSING
+                self._timelapse_data[entity_id]["time_remaining"] = 0
+                await self.async_request_refresh()
+            
+            # Cancel the ongoing task
             self._timelapse_tasks[entity_id].cancel()
             
-            # Update status
-            if entity_id in self._timelapse_data:
+            # If we have captured frames, generate the video
+            if frame_dir and output_file:
+                _LOGGER.info("Generating timelapse video from manually stopped recording")
+                try:
+                    # Generate timelapse video with captured frames and clean up frames
+                    media_url = await self._generate_timelapse(frame_dir, output_file, cleanup_frames=True)
+                    
+                    # Update status and add media URL for frontend playback
+                    self._timelapse_data[entity_id]["status"] = STATUS_IDLE
+                    self._timelapse_data[entity_id]["progress"] = 100
+                    
+                    if media_url:
+                        self._timelapse_data[entity_id]["media_url"] = media_url
+                        _LOGGER.info("Timelapse completed and saved to: %s", output_file)
+                    
+                except Exception as e:
+                    _LOGGER.error("Error generating timelapse after manual stop: %s", e)
+                    _LOGGER.exception("Detailed timelapse error information")
+                    self._timelapse_data[entity_id]["status"] = STATUS_ERROR
+                    self._timelapse_data[entity_id]["error_message"] = str(e)
+            else:
+                # If no frames were captured or paths not available, just set to idle
                 self._timelapse_data[entity_id]["status"] = STATUS_IDLE
                 self._timelapse_data[entity_id]["progress"] = 0
-                self._timelapse_data[entity_id]["time_remaining"] = 0
             
             await self.async_request_refresh()
             
@@ -360,6 +392,8 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             # Add media URL for frontend playback if available
             if media_url:
                 self._timelapse_data[camera_entity_id]["media_url"] = media_url
+                
+            _LOGGER.info("Timelapse processing complete for %s", camera_entity_id)
             
             # Log successful completion
             _LOGGER.info("Timelapse completed and saved to: %s", output_file)
@@ -368,7 +402,8 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             
         except asyncio.CancelledError:
             _LOGGER.debug("Timelapse canceled for %s", camera_entity_id)
-            raise
+            # Note: We don't raise here anymore to prevent propagation
+            # The stop_timelapse method now handles video generation
             
         except Exception as e:
             _LOGGER.error("Error in timelapse: %s", e)
@@ -377,7 +412,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             self._timelapse_data[camera_entity_id]["error_message"] = str(e)
             self.async_set_updated_data(self._timelapse_data)
     
-    async def _generate_timelapse(self, frame_dir: str, output_file: str) -> None:
+    async def _generate_timelapse(self, frame_dir: str, output_file: str, cleanup_frames: bool = True) -> str:
         """Generate timelapse video from frames."""
         # Use ffmpeg to generate timelapse
         try:
@@ -590,6 +625,30 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                             
                             if media_source_url:
                                 _LOGGER.info("Media source URL for playback: %s", media_source_url)
+                                
+                                # Clean up frame directory if requested
+                                if cleanup_frames:
+                                    try:
+                                        _LOGGER.info("Cleaning up temporary frame files in %s", frame_dir)
+                                        frame_files = [f for f in os.listdir(frame_dir) if f.startswith("frame_") and f.endswith(".jpg")]
+                                        for frame in frame_files:
+                                            file_path = os.path.join(frame_dir, frame)
+                                            os.remove(file_path)
+                                        
+                                        # Remove the input list file if it exists
+                                        input_list_path = os.path.join(frame_dir, "input_list.txt")
+                                        if os.path.exists(input_list_path):
+                                            os.remove(input_list_path)
+                                            
+                                        # Try to remove the frame directory
+                                        try:
+                                            os.rmdir(frame_dir)
+                                            _LOGGER.info("Removed empty frame directory %s", frame_dir)
+                                        except OSError:
+                                            _LOGGER.warning("Could not remove frame directory %s, it may not be empty", frame_dir)
+                                    except Exception as cleanup_err:
+                                        _LOGGER.warning("Error cleaning up frame files: %s", cleanup_err)
+                                
                                 return media_source_url
                         except Exception as e:
                             _LOGGER.error("Error creating media URL: %s", e)
