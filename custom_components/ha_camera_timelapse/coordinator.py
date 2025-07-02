@@ -216,6 +216,40 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             
             await self.async_request_refresh()
             
+    async def set_interval(self, entity_id: str, interval: int) -> None:
+        """Change interval of an ongoing timelapse recording."""
+        if entity_id in self._timelapse_data:
+            if self._timelapse_data[entity_id]["status"] == STATUS_RECORDING:
+                self._timelapse_data[entity_id]["interval"] = interval
+                _LOGGER.info("Changed recording interval for %s to %d seconds", entity_id, interval)
+                await self.async_request_refresh()
+            else:
+                _LOGGER.warning(
+                    "Cannot change interval for %s - not currently recording", entity_id
+                )
+        else:
+            _LOGGER.error("Cannot change interval - entity %s not found", entity_id)
+    
+    async def set_camera(self, old_entity_id: str, new_entity_id: str) -> None:
+        """Change camera of an ongoing timelapse recording."""
+        if old_entity_id in self._timelapse_data:
+            if self._timelapse_data[old_entity_id]["status"] == STATUS_IDLE:
+                # Copy timelapse data to new entity ID
+                self._timelapse_data[new_entity_id] = self._timelapse_data[old_entity_id].copy()
+                self._timelapse_data[new_entity_id]["camera_entity_id"] = new_entity_id
+                
+                # Remove old entity data
+                self._timelapse_data.pop(old_entity_id)
+                
+                _LOGGER.info("Changed camera entity from %s to %s", old_entity_id, new_entity_id)
+                await self.async_request_refresh()
+            else:
+                _LOGGER.warning(
+                    "Cannot change camera while recording is active - stop recording first"
+                )
+        else:
+            _LOGGER.error("Cannot change camera - entity %s not found", old_entity_id)
+    
     async def _capture_timelapse(
         self, 
         camera_entity_id: str, 

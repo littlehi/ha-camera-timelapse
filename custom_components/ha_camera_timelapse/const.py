@@ -5,6 +5,8 @@ DOMAIN = "ha_camera_timelapse"
 # Services
 SERVICE_START_TIMELAPSE = "start_timelapse"
 SERVICE_STOP_TIMELAPSE = "stop_timelapse"
+SERVICE_SET_INTERVAL = "set_interval"
+SERVICE_SET_CAMERA = "set_camera"
 
 # Service attributes
 ATTR_ENTITY_ID = "entity_id"
