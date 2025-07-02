@@ -22,7 +22,7 @@ CONF_DEBUG_MODE = "debug_mode"
 # Default values
 DEFAULT_INTERVAL = 60  # seconds
 DEFAULT_DURATION = 1440  # minutes (24 hours)
-DEFAULT_OUTPUT_PATH = "/config/timelapses"
+DEFAULT_OUTPUT_PATH = "/media/local/timelapses"  # Media directory for HA frontend access
 DEFAULT_DEBUG = False  # Enable debug mode
 
 # Entity attributes
@@ -31,6 +31,7 @@ ATTR_PROGRESS = "progress"
 ATTR_FRAMES_CAPTURED = "frames_captured"
 ATTR_TIME_REMAINING = "time_remaining"
 ATTR_OUTPUT_FILE = "output_file"
+ATTR_MEDIA_URL = "media_url"
 ATTR_ERROR_MESSAGE = "error_message"
 
 # Status values

@@ -86,8 +86,22 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 self.config_entry.data.get("default_output_path", DEFAULT_OUTPUT_PATH)
             )
         
-        # Ensure output directory exists
-        os.makedirs(output_path, exist_ok=True)
+        # Ensure output directory exists and check permissions
+        try:
+            os.makedirs(output_path, exist_ok=True)
+            
+            # Test write permissions by creating a test file
+            test_file = os.path.join(output_path, ".permission_test")
+            try:
+                with open(test_file, "w") as f:
+                    f.write("test")
+                os.remove(test_file)
+                _LOGGER.debug("Output directory has write permissions: %s", output_path)
+            except PermissionError:
+                _LOGGER.warning("No write permission for output directory: %s", output_path)
+                _LOGGER.warning("Timelapse video may fail to save. Check directory permissions.")
+        except Exception as e:
+            _LOGGER.error("Error creating output directory %s: %s", output_path, e)
         
         # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -246,12 +260,16 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             
             # Generate timelapse video
             _LOGGER.info("Starting timelapse generation from %d frames", frame_count)
-            await self._generate_timelapse(frame_dir, output_file)
+            media_url = await self._generate_timelapse(frame_dir, output_file)
             
             # Update status to completed
             self._timelapse_data[camera_entity_id]["status"] = STATUS_IDLE
             self._timelapse_data[camera_entity_id]["progress"] = 100
             self._timelapse_data[camera_entity_id]["time_remaining"] = 0
+            
+            # Add media URL for frontend playback if available
+            if media_url:
+                self._timelapse_data[camera_entity_id]["media_url"] = media_url
             
             # Log successful completion
             _LOGGER.info("Timelapse completed and saved to: %s", output_file)
@@ -290,7 +308,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 
             _LOGGER.debug("Using ffmpeg at %s", ffmpeg_path)
             
-            # Build ffmpeg command
+            # Build ffmpeg command - use a more compatible configuration
             cmd = [
                 ffmpeg_path,
                 "-y",  # Overwrite output file if exists
@@ -298,12 +316,17 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 "-pattern_type", "glob",
                 "-i", f"{frame_dir}/frame_*.jpg",
                 "-c:v", "libx264",
+                "-preset", "medium",  # Balance between encoding speed and compression
+                "-profile:v", "baseline",  # More compatible profile
+                "-level", "3.0",     # Compatibility level
                 "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",  # Optimize for web playback
                 output_file
             ]
             
             _LOGGER.debug("Executing ffmpeg command: %s", " ".join(cmd))
             
+            _LOGGER.info("Starting FFmpeg process to generate timelapse video...")
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -316,12 +339,40 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 stderr_text = stderr.decode() if stderr else "Unknown error"
                 _LOGGER.error("Error generating timelapse (return code %d): %s", 
                               process.returncode, stderr_text)
+                
+                # Log more detailed debug info
+                if stderr:
+                    stderr_lines = stderr_text.splitlines()
+                    for line in stderr_lines[:20]:  # Log first 20 lines at most
+                        _LOGGER.error("FFmpeg error detail: %s", line)
+                
                 raise HomeAssistantError(f"Failed to generate timelapse: {stderr_text}")
+            
+            if stdout:
+                stdout_text = stdout.decode()
+                _LOGGER.debug("FFmpeg stdout: %s", stdout_text)
             
             # Verify the output file exists and has content
             if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
                 _LOGGER.info("Timelapse generated successfully: %s (%d bytes)", 
                              output_file, os.path.getsize(output_file))
+                
+                # Create media source URL for frontend playback
+                try:
+                    filename = os.path.basename(output_file)
+                    # If output path starts with /media/local, strip it to get relative path
+                    if output_file.startswith("/media/local/"):
+                        relative_path = output_file[len("/media/local/"):]
+                        media_source_url = f"media-source://media_source/local/{relative_path}"
+                    else:
+                        # For other paths, just use the basename
+                        media_source_url = f"media-source://media_source/local/timelapses/{filename}"
+                    
+                    _LOGGER.info("Media source URL for playback: %s", media_source_url)
+                    return media_source_url
+                except Exception as e:
+                    _LOGGER.error("Error creating media URL: %s", e)
+                    
             else:
                 _LOGGER.error("Output file does not exist or is empty: %s", output_file)
                 raise HomeAssistantError(f"Output file does not exist or is empty: {output_file}")

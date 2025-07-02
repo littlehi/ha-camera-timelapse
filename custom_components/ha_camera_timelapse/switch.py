@@ -107,6 +107,9 @@ class TimelapseSwitch(CoordinatorEntity, SwitchEntity):
             if "output_file" in timelapse_data:
                 attrs[ATTR_OUTPUT_FILE] = timelapse_data["output_file"]
                 
+            if "media_url" in timelapse_data:
+                attrs[ATTR_MEDIA_URL] = timelapse_data["media_url"]
+                
             # Add other useful attributes
             if "interval" in timelapse_data:
                 attrs["interval"] = timelapse_data["interval"]
