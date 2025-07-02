@@ -17,6 +17,7 @@ CONF_CAMERA_ENTITY_ID = "camera_entity_id"
 CONF_DEFAULT_INTERVAL = "default_interval"
 CONF_DEFAULT_DURATION = "default_duration"
 CONF_DEFAULT_OUTPUT_PATH = "default_output_path"
+CONF_DEBUG_MODE = "debug_mode"
 
 # Default values
 DEFAULT_INTERVAL = 60  # seconds
