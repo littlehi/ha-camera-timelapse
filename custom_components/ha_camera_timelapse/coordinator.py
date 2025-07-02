@@ -7,7 +7,10 @@ import os
 from datetime import datetime, timedelta
 import aiofiles
 import aiohttp
-from typing import Any, Dict, Optional
+import aiofiles.os
+import urllib.request
+import requests
+from typing import Any, Dict, Optional, Tuple
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -65,6 +68,30 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         output_path: Optional[str] = None
     ) -> None:
         """Start a timelapse recording."""
+        # Check if camera entity exists and is available
+        try:
+            camera_state = self.hass.states.get(camera_entity_id)
+            if not camera_state:
+                _LOGGER.error("Camera entity %s does not exist", camera_entity_id)
+                raise HomeAssistantError(f"Camera entity {camera_entity_id} does not exist")
+                
+            if camera_state.state == "unavailable":
+                _LOGGER.error("Camera entity %s is unavailable", camera_entity_id)
+                raise HomeAssistantError(f"Camera entity {camera_entity_id} is unavailable")
+                
+            # Try to get a test image to verify camera access
+            _LOGGER.info("Testing camera access for %s", camera_entity_id)
+            try:
+                test_image = await async_get_image(self.hass, camera_entity_id, timeout=10)
+                _LOGGER.info("Camera test successful: received image of %d bytes", 
+                           len(test_image.content) if test_image and test_image.content else 0)
+            except Exception as e:
+                _LOGGER.error("Failed to access camera %s: %s", camera_entity_id, str(e))
+                _LOGGER.warning("Will proceed with timelapse, but image capture may fail")
+                
+        except Exception as e:
+            _LOGGER.error("Error checking camera %s: %s", camera_entity_id, str(e))
+                
         # Cancel any existing timelapse for this entity
         if camera_entity_id in self._timelapse_tasks and not self._timelapse_tasks[camera_entity_id].done():
             self._timelapse_tasks[camera_entity_id].cancel()
@@ -179,23 +206,86 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             
             while dt_util.now() < end_time:
                 try:
-                    # Capture frame
+                    # Capture frame with retry mechanism
                     if self._debug:
                         _LOGGER.debug("Capturing frame from camera: %s", camera_entity_id)
                     else:
                         # Even in non-debug mode, log frame captures less frequently
                         if frame_count % 10 == 0:
                             _LOGGER.info("Capturing frame %d for %s", frame_count, camera_entity_id)
-                    try:
-                        # Use the correct way to get camera image
-                        image = await async_get_image(self.hass, camera_entity_id)
-                    except AttributeError as attr_err:
-                        _LOGGER.error("Error with camera API call: %s", attr_err)
-                        _LOGGER.error("This may indicate a version mismatch or API change in Home Assistant")
-                        raise HomeAssistantError(f"Cannot access camera: {attr_err}")
+                    
+                    # Implement retry mechanism
+                    max_retries = 3
+                    retry_count = 0
+                    retry_delay = 2  # seconds
+                    image = None
+                    
+                    while retry_count < max_retries:
+                        try:
+                            # First check if camera is still available
+                            camera_state = self.hass.states.get(camera_entity_id)
+                            if not camera_state or camera_state.state == "unavailable":
+                                _LOGGER.error("Camera %s is unavailable, skipping frame", camera_entity_id)
+                                break
+                            
+                            # Try different methods of getting the camera image
+                            # Method 1: Try the standard Home Assistant API
+                            try:
+                                image = await async_get_image(self.hass, camera_entity_id, timeout=10)
+                                if image and image.content:
+                                    _LOGGER.debug("Successfully captured image using standard HA API")
+                                    break
+                            except Exception as e1:
+                                _LOGGER.warning("Standard HA API failed: %s", e1)
+                            
+                            # Method 2: Try getting the camera stream URL and fetch directly
+                            try:
+                                camera_data = self.hass.data.get("camera", {})
+                                camera_entity = camera_data.get(camera_entity_id.split(".")[1], None)
+                                
+                                if camera_entity and hasattr(camera_entity, "stream_source"):
+                                    stream_source = camera_entity.stream_source
+                                    if stream_source:
+                                        _LOGGER.info("Trying direct stream access: %s", stream_source)
+                                        
+                                        # For http streams
+                                        if stream_source.startswith(("http://", "https://")):
+                                            async with aiohttp.ClientSession() as session:
+                                                async with session.get(stream_source, timeout=10) as resp:
+                                                    if resp.status == 200:
+                                                        content = await resp.read()
+                                                        if content:
+                                                            from homeassistant.components.camera import Image
+                                                            image = Image(content, "image/jpeg")
+                                                            _LOGGER.info("Direct stream access successful")
+                                                            break
+                            except Exception as e2:
+                                _LOGGER.warning("Direct stream access failed: %s", e2)
+                                
+                            # If we got here, we failed to get an image this attempt
+                            retry_count += 1
+                            if retry_count < max_retries:
+                                _LOGGER.warning("All image capture methods failed, retrying (%d/%d) in %d seconds", 
+                                              retry_count, max_retries, retry_delay)
+                                await asyncio.sleep(retry_delay)
+                            else:
+                                _LOGGER.error("Failed to capture frame after %d retries and all methods", 
+                                            max_retries)
+                        
+                        except Exception as e:
+                            retry_count += 1
+                            if retry_count < max_retries:
+                                _LOGGER.warning("Failed to capture frame (%d/%d), retrying in %d seconds: %s", 
+                                              retry_count, max_retries, retry_delay, str(e))
+                                await asyncio.sleep(retry_delay)
+                            else:
+                                _LOGGER.error("Failed to capture frame after %d retries: %s", 
+                                            max_retries, str(e))
+                                if isinstance(e, AttributeError):
+                                    _LOGGER.error("This may indicate a version mismatch or API change in Home Assistant")
                     
                     if not image or not image.content:
-                        _LOGGER.error("No image content received from camera %s", camera_entity_id)
+                        _LOGGER.error("No image content received from camera %s after retries", camera_entity_id)
                         continue
                     
                     if self._debug:
