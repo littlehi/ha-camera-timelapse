@@ -56,3 +56,14 @@ stop_timelapse:
         entity:
           domain: switch
           integration: ha_camera_timelapse
+
+toggle_debug:
+  name: Toggle Debug Mode
+  description: Enable or disable debug mode for browser inspection.
+  fields:
+    debug:
+      name: Enable Debug
+      description: Turn debug mode on or off.
+      required: true
+      selector:
+        boolean:
