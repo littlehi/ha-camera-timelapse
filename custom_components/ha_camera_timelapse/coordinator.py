@@ -299,30 +299,84 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             
             _LOGGER.info("Found %d frames in %s", len(frame_files), frame_dir)
             
-            # Verify ffmpeg is available
+            # Verify ffmpeg is available - with enhanced checking
             import shutil
+            import subprocess
+            
             ffmpeg_path = shutil.which("ffmpeg")
             if not ffmpeg_path:
                 _LOGGER.error("ffmpeg not found in PATH, cannot create timelapse")
-                raise HomeAssistantError("ffmpeg not found in PATH, cannot create timelapse")
                 
-            _LOGGER.debug("Using ffmpeg at %s", ffmpeg_path)
+                # Try to find ffmpeg in common locations
+                common_paths = [
+                    "/usr/bin/ffmpeg", 
+                    "/usr/local/bin/ffmpeg",
+                    "/bin/ffmpeg",
+                    "/opt/bin/ffmpeg",
+                    "/usr/sbin/ffmpeg"
+                ]
+                
+                for path in common_paths:
+                    if os.path.exists(path) and os.access(path, os.X_OK):
+                        _LOGGER.info("Found ffmpeg at alternate location: %s", path)
+                        ffmpeg_path = path
+                        break
+                
+                if not ffmpeg_path:
+                    _LOGGER.error("ffmpeg not found in any common locations")
+                    raise HomeAssistantError("ffmpeg not found, cannot create timelapse")
             
-            # Build ffmpeg command - use a more compatible configuration
+            _LOGGER.info("Using ffmpeg at %s", ffmpeg_path)
+            
+            # Verify ffmpeg works
+            try:
+                version_process = await asyncio.create_subprocess_exec(
+                    ffmpeg_path, "-version",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
+                stdout, stderr = await version_process.communicate()
+                
+                if version_process.returncode == 0:
+                    version_info = stdout.decode().splitlines()[0]
+                    _LOGGER.info("FFmpeg version: %s", version_info)
+                else:
+                    _LOGGER.warning("FFmpeg version check failed: %s", stderr.decode() if stderr else "Unknown error")
+            except Exception as e:
+                _LOGGER.error("Error checking FFmpeg version: %s", e)
+            
+            # Try a simpler, more compatible FFmpeg command - using direct file input
+            # Create input file list for ffmpeg
+            input_list_path = os.path.join(frame_dir, "input_list.txt")
+            try:
+                with open(input_list_path, "w") as f:
+                    for frame in sorted(frame_files):
+                        f.write(f"file '{os.path.join(frame_dir, frame)}'\n")
+                _LOGGER.info("Created input file list at %s", input_list_path)
+            except Exception as e:
+                _LOGGER.error("Error creating input file list: %s", e)
+                
+            # Command with explicit file list instead of glob pattern
             cmd = [
                 ffmpeg_path,
                 "-y",  # Overwrite output file if exists
-                "-framerate", "30",  # Output framerate
-                "-pattern_type", "glob",
-                "-i", f"{frame_dir}/frame_*.jpg",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", input_list_path,
                 "-c:v", "libx264",
-                "-preset", "medium",  # Balance between encoding speed and compression
-                "-profile:v", "baseline",  # More compatible profile
-                "-level", "3.0",     # Compatibility level
+                "-preset", "ultrafast",  # Fastest encoding
                 "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",  # Optimize for web playback
+                "-r", "10",  # Output framerate
                 output_file
             ]
+            
+            # Log the frames before processing
+            _LOGGER.info("Frame files found (first 5):")
+            for frame in frame_files[:5]:
+                file_path = os.path.join(frame_dir, frame)
+                file_size = os.path.getsize(file_path)
+                _LOGGER.info("  - %s (%d bytes)", frame, file_size)
             
             _LOGGER.debug("Executing ffmpeg command: %s", " ".join(cmd))
             

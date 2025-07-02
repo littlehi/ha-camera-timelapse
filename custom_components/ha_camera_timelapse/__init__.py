@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 import homeassistant.helpers.config_validation as cv
@@ -18,7 +19,23 @@ from .const import (
 )
 from .coordinator import TimelapseCoordinator
 
+# Set up detailed logging
 _LOGGER = logging.getLogger(__name__)
+
+# Create a file handler for detailed debugging
+file_handler = logging.FileHandler('/config/timelapse_debug.log')
+file_handler.setLevel(logging.DEBUG)
+
+# Create formatter and add it to the handler
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# Add handler to the logger
+_LOGGER.addHandler(file_handler)
+_LOGGER.setLevel(logging.DEBUG)
+
+# Log startup information
+_LOGGER.info("Camera Timelapse module loading with Python %s", sys.version)
 
 PLATFORMS = ["switch"]
 
