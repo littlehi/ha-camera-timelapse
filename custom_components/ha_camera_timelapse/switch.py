@@ -19,6 +19,7 @@ from .const import (
     ATTR_FRAMES_CAPTURED,
     ATTR_TIME_REMAINING,
     ATTR_OUTPUT_FILE,
+    ATTR_ERROR_MESSAGE,
     STATUS_IDLE,
     STATUS_RECORDING,
 )
@@ -98,6 +99,10 @@ class TimelapseSwitch(CoordinatorEntity, SwitchEntity):
                 ATTR_FRAMES_CAPTURED: timelapse_data.get("frames_captured", 0),
                 ATTR_TIME_REMAINING: timelapse_data.get("time_remaining", 0),
             })
+            
+            # Add error message if present
+            if "error_message" in timelapse_data and timelapse_data["error_message"]:
+                attrs[ATTR_ERROR_MESSAGE] = timelapse_data["error_message"]
             
             if "output_file" in timelapse_data:
                 attrs[ATTR_OUTPUT_FILE] = timelapse_data["output_file"]

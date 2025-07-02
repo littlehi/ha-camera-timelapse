@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.components.camera import Image
+from homeassistant.components.camera import Image, async_get_image
 import homeassistant.util.dt as dt_util
 
 from .const import (
@@ -111,6 +111,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             "frames_captured": 0,
             "progress": 0,
             "time_remaining": duration * 60,  # in seconds
+            "error_message": "",  # Will be populated if an error occurs
         }
         
         self._timelapse_data[camera_entity_id] = timelapse_data
@@ -157,12 +158,27 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             
             frame_count = 0
             
+            _LOGGER.info("Starting timelapse capture for camera %s, frames every %d seconds for %d minutes", 
+                      camera_entity_id, interval, duration)
+            _LOGGER.info("Frames will be saved to %s", frame_dir)
+            _LOGGER.info("Final timelapse will be saved as %s", output_file)
+            
             while dt_util.now() < end_time:
                 try:
                     # Capture frame
                     if self._debug:
                         _LOGGER.debug("Capturing frame from camera: %s", camera_entity_id)
-                    image = await self.hass.components.camera.async_get_image(camera_entity_id)
+                    else:
+                        # Even in non-debug mode, log frame captures less frequently
+                        if frame_count % 10 == 0:
+                            _LOGGER.info("Capturing frame %d for %s", frame_count, camera_entity_id)
+                    try:
+                        # Use the correct way to get camera image
+                        image = await async_get_image(self.hass, camera_entity_id)
+                    except AttributeError as attr_err:
+                        _LOGGER.error("Error with camera API call: %s", attr_err)
+                        _LOGGER.error("This may indicate a version mismatch or API change in Home Assistant")
+                        raise HomeAssistantError(f"Cannot access camera: {attr_err}")
                     
                     if not image or not image.content:
                         _LOGGER.error("No image content received from camera %s", camera_entity_id)
@@ -202,26 +218,43 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                     
                     self.async_set_updated_data(self._timelapse_data)
                     
+                except HomeAssistantError as ha_err:
+                    _LOGGER.error("Home Assistant error: %s", ha_err)
+                    _LOGGER.exception("Home Assistant error details")
+                    # If we have a Home Assistant error, wait a bit longer before retrying
+                    await asyncio.sleep(min(interval, 10))
+                    continue
                 except Exception as e:
                     _LOGGER.error("Error capturing frame: %s", e)
                     _LOGGER.exception("Detailed exception information")
+                    # Try to continue with next frame after a short delay
+                    await asyncio.sleep(2)
+                    continue
                 
                 # Wait for next interval
                 if self._debug:
                     _LOGGER.debug("Waiting %d seconds until next frame capture", interval)
                 await asyncio.sleep(interval)
             
+            # Log completion of frame capture
+            _LOGGER.info("Finished capturing frames for %s. Total frames: %d", 
+                      camera_entity_id, frame_count)
+            
             # Update status to processing
             self._timelapse_data[camera_entity_id]["status"] = STATUS_PROCESSING
             self.async_set_updated_data(self._timelapse_data)
             
             # Generate timelapse video
+            _LOGGER.info("Starting timelapse generation from %d frames", frame_count)
             await self._generate_timelapse(frame_dir, output_file)
             
             # Update status to completed
             self._timelapse_data[camera_entity_id]["status"] = STATUS_IDLE
             self._timelapse_data[camera_entity_id]["progress"] = 100
             self._timelapse_data[camera_entity_id]["time_remaining"] = 0
+            
+            # Log successful completion
+            _LOGGER.info("Timelapse completed and saved to: %s", output_file)
             
             self.async_set_updated_data(self._timelapse_data)
             
@@ -231,7 +264,9 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             
         except Exception as e:
             _LOGGER.error("Error in timelapse: %s", e)
+            _LOGGER.exception("Detailed timelapse error information")
             self._timelapse_data[camera_entity_id]["status"] = STATUS_ERROR
+            self._timelapse_data[camera_entity_id]["error_message"] = str(e)
             self.async_set_updated_data(self._timelapse_data)
     
     async def _generate_timelapse(self, frame_dir: str, output_file: str) -> None:

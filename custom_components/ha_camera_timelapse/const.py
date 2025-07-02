@@ -31,6 +31,7 @@ ATTR_PROGRESS = "progress"
 ATTR_FRAMES_CAPTURED = "frames_captured"
 ATTR_TIME_REMAINING = "time_remaining"
 ATTR_OUTPUT_FILE = "output_file"
+ATTR_ERROR_MESSAGE = "error_message"
 
 # Status values
 STATUS_IDLE = "idle"
