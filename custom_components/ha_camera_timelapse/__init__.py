@@ -12,8 +12,6 @@ from .const import (
     DOMAIN,
     SERVICE_START_TIMELAPSE,
     SERVICE_STOP_TIMELAPSE,
-    SERVICE_SET_INTERVAL,
-    SERVICE_SET_CAMERA,
     ATTR_ENTITY_ID,
     ATTR_INTERVAL,
     ATTR_DURATION,
@@ -59,17 +57,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entity_id = call.data.get(ATTR_ENTITY_ID)
         await coordinator.stop_timelapse(entity_id=entity_id)
     
-    async def set_interval(call: ServiceCall) -> None:
-        """Handle the service call to change timelapse interval."""
-        entity_id = call.data.get(ATTR_ENTITY_ID)
-        interval = call.data.get(ATTR_INTERVAL)
-        await coordinator.set_interval(entity_id=entity_id, interval=interval)
-    
-    async def set_camera(call: ServiceCall) -> None:
-        """Handle the service call to change timelapse camera."""
-        old_entity_id = call.data.get("old_entity_id")
-        new_entity_id = call.data.get("new_entity_id")
-        await coordinator.set_camera(old_entity_id=old_entity_id, new_entity_id=new_entity_id)
     
     # Register services
     hass.services.async_register(
@@ -93,25 +80,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         }),
     )
     
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SET_INTERVAL,
-        set_interval,
-        schema=vol.Schema({
-            vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-            vol.Required(ATTR_INTERVAL): cv.positive_int,
-        }),
-    )
-    
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SET_CAMERA,
-        set_camera,
-        schema=vol.Schema({
-            vol.Required("old_entity_id"): cv.entity_id,
-            vol.Required("new_entity_id"): cv.entity_id,
-        }),
-    )
     
     return True
 
