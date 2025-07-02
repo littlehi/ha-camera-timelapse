@@ -17,9 +17,11 @@ from .const import (
     CONF_DEFAULT_INTERVAL,
     CONF_DEFAULT_DURATION,
     CONF_DEFAULT_OUTPUT_PATH,
+    CONF_DEBUG_MODE,
     DEFAULT_INTERVAL,
     DEFAULT_DURATION,
     DEFAULT_OUTPUT_PATH,
+    DEFAULT_DEBUG,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -89,6 +91,7 @@ class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_DEFAULT_INTERVAL, default=DEFAULT_INTERVAL): cv.positive_int,
                 vol.Optional(CONF_DEFAULT_DURATION, default=DEFAULT_DURATION): cv.positive_int,
                 vol.Optional(CONF_DEFAULT_OUTPUT_PATH, default=DEFAULT_OUTPUT_PATH): cv.string,
+                vol.Optional(CONF_DEBUG_MODE, default=DEFAULT_DEBUG): cv.boolean,
             }
         )
 
@@ -130,6 +133,13 @@ class CameraTimelapseOptionsFlow(config_entries.OptionsFlow):
                     self.config_entry.data.get(CONF_DEFAULT_OUTPUT_PATH, DEFAULT_OUTPUT_PATH)
                 ),
             ): cv.string,
+            vol.Optional(
+                CONF_DEBUG_MODE,
+                default=self.config_entry.options.get(
+                    CONF_DEBUG_MODE,
+                    self.config_entry.data.get(CONF_DEBUG_MODE, DEFAULT_DEBUG)
+                ),
+            ): cv.boolean,
         }
 
         return self.async_show_form(

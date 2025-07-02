@@ -8,7 +8,8 @@
           "camera_entity_id": "Camera Entity",
           "default_interval": "Default Interval (seconds)",
           "default_duration": "Default Duration (minutes)",
-          "default_output_path": "Default Output Path"
+          "default_output_path": "Default Output Path",
+          "debug_mode": "Enable Debug Mode"
         }
       }
     },
@@ -29,7 +30,8 @@
         "data": {
           "default_interval": "Default Interval (seconds)",
           "default_duration": "Default Duration (minutes)",
-          "default_output_path": "Default Output Path"
+          "default_output_path": "Default Output Path",
+          "debug_mode": "Enable Debug Mode"
         }
       }
     }

@@ -22,6 +22,7 @@ CONF_DEFAULT_OUTPUT_PATH = "default_output_path"
 DEFAULT_INTERVAL = 60  # seconds
 DEFAULT_DURATION = 1440  # minutes (24 hours)
 DEFAULT_OUTPUT_PATH = "/config/timelapses"
+DEFAULT_DEBUG = False  # Enable debug mode
 
 # Entity attributes
 ATTR_STATUS = "status"

@@ -22,6 +22,7 @@ from .const import (
     DEFAULT_INTERVAL,
     DEFAULT_DURATION,
     DEFAULT_OUTPUT_PATH,
+    DEFAULT_DEBUG,
     STATUS_IDLE,
     STATUS_RECORDING,
     STATUS_PROCESSING,
@@ -40,6 +41,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         self.camera_entity_id = entry.data.get(CONF_CAMERA_ENTITY_ID)
         self._timelapse_tasks = {}
         self._timelapse_data = {}
+        self._debug = entry.options.get("debug", DEFAULT_DEBUG)
         
         update_interval = timedelta(seconds=10)
         
@@ -158,14 +160,33 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             while dt_util.now() < end_time:
                 try:
                     # Capture frame
+                    if self._debug:
+                        _LOGGER.debug("Capturing frame from camera: %s", camera_entity_id)
                     image = await self.hass.components.camera.async_get_image(camera_entity_id)
+                    
+                    if not image or not image.content:
+                        _LOGGER.error("No image content received from camera %s", camera_entity_id)
+                        continue
+                    
+                    if self._debug:
+                        _LOGGER.debug("Image captured, size: %d bytes", len(image.content))
                     
                     # Save frame to file
                     frame_path = os.path.join(frame_dir, f"frame_{frame_count:06d}.jpg")
+                    if self._debug:
+                        _LOGGER.debug("Saving frame to %s", frame_path)
+                    
                     async with aiofiles.open(frame_path, "wb") as f:
                         await f.write(image.content)
                     
-                    frame_count += 1
+                    # Verify file was written
+                    if os.path.exists(frame_path) and os.path.getsize(frame_path) > 0:
+                        if self._debug:
+                            _LOGGER.debug("Frame saved successfully: %s (%d bytes)", 
+                                         frame_path, os.path.getsize(frame_path))
+                        frame_count += 1
+                    else:
+                        _LOGGER.error("Failed to save frame or file is empty: %s", frame_path)
                     
                     # Update timelapse data
                     elapsed = (dt_util.now() - start_time).total_seconds()
@@ -183,8 +204,11 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                     
                 except Exception as e:
                     _LOGGER.error("Error capturing frame: %s", e)
+                    _LOGGER.exception("Detailed exception information")
                 
                 # Wait for next interval
+                if self._debug:
+                    _LOGGER.debug("Waiting %d seconds until next frame capture", interval)
                 await asyncio.sleep(interval)
             
             # Update status to processing
@@ -214,8 +238,26 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         """Generate timelapse video from frames."""
         # Use ffmpeg to generate timelapse
         try:
+            # Check if we have frames to process
+            frame_files = [f for f in os.listdir(frame_dir) if f.startswith("frame_") and f.endswith(".jpg")]
+            if not frame_files:
+                _LOGGER.error("No frames found in %s, cannot create timelapse", frame_dir)
+                raise HomeAssistantError(f"No frames found in {frame_dir}, cannot create timelapse")
+            
+            _LOGGER.info("Found %d frames in %s", len(frame_files), frame_dir)
+            
+            # Verify ffmpeg is available
+            import shutil
+            ffmpeg_path = shutil.which("ffmpeg")
+            if not ffmpeg_path:
+                _LOGGER.error("ffmpeg not found in PATH, cannot create timelapse")
+                raise HomeAssistantError("ffmpeg not found in PATH, cannot create timelapse")
+                
+            _LOGGER.debug("Using ffmpeg at %s", ffmpeg_path)
+            
+            # Build ffmpeg command
             cmd = [
-                "ffmpeg",
+                ffmpeg_path,
                 "-y",  # Overwrite output file if exists
                 "-framerate", "30",  # Output framerate
                 "-pattern_type", "glob",
@@ -224,6 +266,8 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 "-pix_fmt", "yuv420p",
                 output_file
             ]
+            
+            _LOGGER.debug("Executing ffmpeg command: %s", " ".join(cmd))
             
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -234,13 +278,22 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             stdout, stderr = await process.communicate()
             
             if process.returncode != 0:
-                _LOGGER.error("Error generating timelapse: %s", stderr.decode())
-                raise HomeAssistantError(f"Failed to generate timelapse: {stderr.decode()}")
+                stderr_text = stderr.decode() if stderr else "Unknown error"
+                _LOGGER.error("Error generating timelapse (return code %d): %s", 
+                              process.returncode, stderr_text)
+                raise HomeAssistantError(f"Failed to generate timelapse: {stderr_text}")
             
-            _LOGGER.info("Timelapse generated: %s", output_file)
+            # Verify the output file exists and has content
+            if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+                _LOGGER.info("Timelapse generated successfully: %s (%d bytes)", 
+                             output_file, os.path.getsize(output_file))
+            else:
+                _LOGGER.error("Output file does not exist or is empty: %s", output_file)
+                raise HomeAssistantError(f"Output file does not exist or is empty: {output_file}")
             
         except Exception as e:
             _LOGGER.error("Error generating timelapse: %s", e)
+            _LOGGER.exception("Detailed exception information")
             raise HomeAssistantError(f"Failed to generate timelapse: {str(e)}")
     
     async def async_shutdown(self) -> None:
