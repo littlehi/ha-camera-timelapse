@@ -31,7 +31,7 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, str]:
     entity_id = data[CONF_CAMERA_ENTITY_ID]
     entity = registry.async_get(entity_id)
     
-    if not entity or not entity.platform.startswith("camera"):
+    if not entity or entity.domain != "camera":
         return {"base": "not_a_camera"}
     
     return {}
