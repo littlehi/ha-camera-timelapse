@@ -436,30 +436,63 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             except Exception as e:
                 _LOGGER.error("Error checking FFmpeg version: %s", e)
             
-            # Try a simpler, more compatible FFmpeg command - using direct file input
-            # Create input file list for ffmpeg
-            input_list_path = os.path.join(frame_dir, "input_list.txt")
-            try:
-                with open(input_list_path, "w") as f:
-                    for frame in sorted(frame_files):
-                        f.write(f"file '{os.path.join(frame_dir, frame)}'\n")
-                _LOGGER.info("Created input file list at %s", input_list_path)
-            except Exception as e:
-                _LOGGER.error("Error creating input file list: %s", e)
+            # Try multiple methods for generating the video
+            # Method 1: Direct pattern approach
+            _LOGGER.info("Trying to generate video using direct pattern method...")
+            
+            # Ensure frames are properly sorted
+            frame_files = sorted(frame_files)
+            first_frame = os.path.join(frame_dir, frame_files[0]) if frame_files else None
+            
+            if first_frame and os.path.exists(first_frame):
+                _LOGGER.info("First frame exists: %s", first_frame)
                 
-            # Command with explicit file list instead of glob pattern
-            cmd = [
-                ffmpeg_path,
-                "-y",  # Overwrite output file if exists
-                "-f", "concat",
-                "-safe", "0",
-                "-i", input_list_path,
-                "-c:v", "libx264",
-                "-preset", "ultrafast",  # Fastest encoding
-                "-pix_fmt", "yuv420p",
-                "-r", "10",  # Output framerate
-                output_file
-            ]
+                # Make absolute paths for inputs and outputs
+                output_file = os.path.abspath(output_file)
+                frame_pattern = os.path.abspath(os.path.join(frame_dir, "frame_%06d.jpg"))
+                
+                _LOGGER.info("Output will be saved to: %s", output_file)
+                _LOGGER.info("Using frame pattern: %s", frame_pattern)
+                
+                # Command using direct pattern instead of glob
+                cmd = [
+                    ffmpeg_path,
+                    "-y",  # Overwrite output file if exists
+                    "-framerate", "10",  # Input framerate
+                    "-i", frame_pattern,  # Input pattern
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",  # Fastest encoding
+                    "-pix_fmt", "yuv420p",
+                    output_file
+                ]
+            else:
+                _LOGGER.warning("Cannot find first frame, falling back to concat method")
+                
+                # Method 2: Concat method with explicit file list
+                input_list_path = os.path.join(frame_dir, "input_list.txt")
+                try:
+                    with open(input_list_path, "w") as f:
+                        for frame in frame_files:
+                            full_path = os.path.join(frame_dir, frame)
+                            f.write(f"file '{os.path.abspath(full_path)}'\n")
+                    _LOGGER.info("Created input file list at %s", input_list_path)
+                except Exception as e:
+                    _LOGGER.error("Error creating input file list: %s", e)
+                    raise HomeAssistantError(f"Error creating input file list: {str(e)}")
+                
+                # Command with explicit file list instead of glob pattern
+                cmd = [
+                    ffmpeg_path,
+                    "-y",  # Overwrite output file if exists
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", input_list_path,
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",  # Fastest encoding
+                    "-pix_fmt", "yuv420p",
+                    "-r", "10",  # Output framerate
+                    output_file
+                ]
             
             # Log the frames before processing
             _LOGGER.info("Frame files found (first 5):")
@@ -496,30 +529,87 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 stdout_text = stdout.decode()
                 _LOGGER.debug("FFmpeg stdout: %s", stdout_text)
             
+            # Create a short delay to ensure file system operations complete
+            await asyncio.sleep(2)
+            
             # Verify the output file exists and has content
-            if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-                _LOGGER.info("Timelapse generated successfully: %s (%d bytes)", 
-                             output_file, os.path.getsize(output_file))
-                
-                # Create media source URL for frontend playback
-                try:
-                    filename = os.path.basename(output_file)
-                    # If output path starts with /media/local, strip it to get relative path
-                    if output_file.startswith("/media/local/"):
-                        relative_path = output_file[len("/media/local/"):]
-                        media_source_url = f"media-source://media_source/local/{relative_path}"
+            try:
+                if os.path.exists(output_file):
+                    file_size = os.path.getsize(output_file)
+                    if file_size > 0:
+                        _LOGGER.info("Timelapse generated successfully: %s (%d bytes)", 
+                                    output_file, file_size)
+                        
+                        # Additional verification - try to open the file
+                        try:
+                            with open(output_file, 'rb') as f:
+                                # Read first few bytes to verify file is accessible
+                                header = f.read(16)
+                                _LOGGER.debug("File header verification: %s", header.hex())
+                        except Exception as e:
+                            _LOGGER.warning("File exists but cannot be opened: %s", e)
+                            
+                        # Create media source URL for frontend playback
+                        try:
+                            filename = os.path.basename(output_file)
+                            
+                            # Try both media locations
+                            media_source_url = None
+                            
+                            # 1. If output path starts with /media/local
+                            if output_file.startswith("/media/local/"):
+                                relative_path = output_file[len("/media/local/"):]
+                                media_source_url = f"media-source://media_source/local/{relative_path}"
+                                _LOGGER.info("Using relative media path: %s", relative_path)
+                                
+                            # 2. If using /media directory
+                            elif output_file.startswith("/media/"):
+                                relative_path = output_file[len("/media/"):]
+                                media_source_url = f"media-source://media_source/{relative_path}"
+                                _LOGGER.info("Using media path: %s", relative_path)
+                                
+                            # 3. Fallback to direct filename
+                            else:
+                                # Copy the file to media directory as fallback
+                                fallback_path = f"/media/local/timelapses/{filename}"
+                                os.makedirs(os.path.dirname(fallback_path), exist_ok=True)
+                                
+                                _LOGGER.info("Copying file to media directory: %s", fallback_path)
+                                try:
+                                    import shutil
+                                    shutil.copy2(output_file, fallback_path)
+                                    media_source_url = f"media-source://media_source/local/timelapses/{filename}"
+                                    
+                                    # Update output_file to the new path
+                                    output_file = fallback_path
+                                    _LOGGER.info("File copied successfully to media directory")
+                                except Exception as copy_err:
+                                    _LOGGER.error("Failed to copy file to media directory: %s", copy_err)
+                                    # Still use the original output file
+                                    media_source_url = f"media-source://media_source/local/timelapses/{filename}"
+                            
+                            if media_source_url:
+                                _LOGGER.info("Media source URL for playback: %s", media_source_url)
+                                return media_source_url
+                        except Exception as e:
+                            _LOGGER.error("Error creating media URL: %s", e)
                     else:
-                        # For other paths, just use the basename
-                        media_source_url = f"media-source://media_source/local/timelapses/{filename}"
+                        _LOGGER.error("Output file exists but is empty: %s", output_file)
+                        raise HomeAssistantError(f"Output file exists but is empty: {output_file}")
+                else:
+                    _LOGGER.error("Output file does not exist: %s", output_file)
                     
-                    _LOGGER.info("Media source URL for playback: %s", media_source_url)
-                    return media_source_url
-                except Exception as e:
-                    _LOGGER.error("Error creating media URL: %s", e)
+                    # Check if directory exists and is writable
+                    output_dir = os.path.dirname(output_file)
+                    if not os.path.exists(output_dir):
+                        _LOGGER.error("Output directory does not exist: %s", output_dir)
+                    elif not os.access(output_dir, os.W_OK):
+                        _LOGGER.error("Output directory is not writable: %s", output_dir)
                     
-            else:
-                _LOGGER.error("Output file does not exist or is empty: %s", output_file)
-                raise HomeAssistantError(f"Output file does not exist or is empty: {output_file}")
+                    raise HomeAssistantError(f"Output file does not exist: {output_file}")
+            except Exception as check_err:
+                _LOGGER.error("Error checking output file: %s", check_err)
+                raise HomeAssistantError(f"Error checking output file: {str(check_err)}")
             
         except Exception as e:
             _LOGGER.error("Error generating timelapse: %s", e)
