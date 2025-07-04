@@ -20,6 +20,7 @@ from .const import (
     ATTR_TIME_REMAINING,
     ATTR_OUTPUT_FILE,
     ATTR_ERROR_MESSAGE,
+    ATTR_TASKS,
     STATUS_IDLE,
     STATUS_RECORDING,
 )
