@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import uuid
+import sys
 from datetime import datetime, timedelta
 import aiofiles
 import aiohttp
@@ -12,6 +13,7 @@ import aiofiles.os
 import urllib.request
 import requests
 from typing import Any, Dict, List, Optional, Tuple
+from functools import partial
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -51,6 +53,17 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         self._timelapse_data = {}
         self._task_registry = {}  # New task registry for management
         self._debug = entry.options.get("debug", DEFAULT_DEBUG)
+        
+        # 检查Python版本并实现to_thread兼容函数
+        self.python_version = sys.version_info
+        if self.python_version < (3, 9):
+            # Python 3.8或更低版本，创建自己的to_thread函数
+            _LOGGER.info("Running on Python %s.%s, using custom to_thread implementation", 
+                        self.python_version.major, self.python_version.minor)
+            self.to_thread = self._to_thread_compat
+        else:
+            # Python 3.9+，使用内置的to_thread
+            self.to_thread = asyncio.to_thread
         
         # 减少更新频率以降低系统负载，从10秒改为30秒
         update_interval = timedelta(seconds=30)
@@ -777,7 +790,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                             else:
                                 # Copy the file to media directory as fallback (使用异步IO来减少阻塞)
                                 fallback_path = f"/media/local/timelapses/{filename}"
-                                await asyncio.to_thread(os.makedirs, os.path.dirname(fallback_path), exist_ok=True)
+                                await self.to_thread(os.makedirs, os.path.dirname(fallback_path), exist_ok=True)
                                 
                                 _LOGGER.info("Copying file to media directory: %s", fallback_path)
                                 try:
@@ -794,7 +807,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                                         _LOGGER.info("Large file detected (%d MB), using chunked copy", file_size/1024/1024)
                                         # 对于大文件，使用子进程进行复制，避免阻塞
                                         import shutil
-                                        await asyncio.to_thread(shutil.copy2, output_file, fallback_path)
+                                        await self.to_thread(shutil.copy2, output_file, fallback_path)
                                     else:
                                         # 对于小文件，使用异步IO
                                         await async_copy_file(output_file, fallback_path)
@@ -820,7 +833,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                                         # 使用异步批量操作，减少IO压力
                                         async def async_cleanup():
                                             # 使用列表推导更高效地获取文件列表
-                                            frame_files = [f for f in await asyncio.to_thread(os.listdir, frame_dir) 
+                                            frame_files = [f for f in await self.to_thread(os.listdir, frame_dir) 
                                                           if f.startswith("frame_") and f.endswith(".jpg")]
                                             
                                             # 批量删除文件，每批最多100个文件
@@ -830,7 +843,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                                                 delete_tasks = []
                                                 for frame in batch:
                                                     file_path = os.path.join(frame_dir, frame)
-                                                    delete_tasks.append(asyncio.to_thread(os.remove, file_path))
+                                                    delete_tasks.append(self.to_thread(os.remove, file_path))
                                                 
                                                 # 并行执行删除操作
                                                 if delete_tasks:
@@ -838,12 +851,12 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                                             
                                             # 删除输入列表文件
                                             input_list_path = os.path.join(frame_dir, "input_list.txt")
-                                            if await asyncio.to_thread(os.path.exists, input_list_path):
-                                                await asyncio.to_thread(os.remove, input_list_path)
+                                            if await self.to_thread(os.path.exists, input_list_path):
+                                                await self.to_thread(os.remove, input_list_path)
                                                 
                                             # 尝试删除空目录
                                             try:
-                                                await asyncio.to_thread(os.rmdir, frame_dir)
+                                                await self.to_thread(os.rmdir, frame_dir)
                                                 _LOGGER.info("Removed empty frame directory %s", frame_dir)
                                             except OSError:
                                                 _LOGGER.warning("Could not remove frame directory %s, it may not be empty", frame_dir)
@@ -879,6 +892,12 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Error generating timelapse: %s", e)
             _LOGGER.exception("Detailed exception information")
             raise HomeAssistantError(f"Failed to generate timelapse: {str(e)}")
+    
+    async def _to_thread_compat(self, func, *args, **kwargs):
+        """兼容Python 3.8的to_thread实现."""
+        loop = asyncio.get_event_loop()
+        func_call = partial(func, *args, **kwargs)
+        return await loop.run_in_executor(None, func_call)
     
     async def async_shutdown(self) -> None:
         """Cancel any active timelapse tasks."""
