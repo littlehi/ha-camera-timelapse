@@ -119,5 +119,11 @@ class TimelapseSwitch(CoordinatorEntity, SwitchEntity):
                 attrs["start_time"] = timelapse_data["start_time"]
             if "end_time" in timelapse_data:
                 attrs["end_time"] = timelapse_data["end_time"]
+            if "task_id" in timelapse_data:
+                attrs["task_id"] = timelapse_data["task_id"]
+            
+            # Add task list attribute if available
+            if ATTR_TASKS in self.coordinator.data:
+                attrs[ATTR_TASKS] = self.coordinator.data[ATTR_TASKS]
         
         return attrs

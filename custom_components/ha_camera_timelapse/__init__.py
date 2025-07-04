@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import sys
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
@@ -12,10 +12,13 @@ from .const import (
     DOMAIN,
     SERVICE_START_TIMELAPSE,
     SERVICE_STOP_TIMELAPSE,
+    SERVICE_LIST_TASKS,
     ATTR_ENTITY_ID,
     ATTR_INTERVAL,
     ATTR_DURATION,
     ATTR_OUTPUT_PATH,
+    ATTR_TASK_ID,
+    ATTR_TASKS,
 )
 from .coordinator import TimelapseCoordinator
 
@@ -45,18 +48,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         duration = call.data.get(ATTR_DURATION)
         output_path = call.data.get(ATTR_OUTPUT_PATH)
         
-        await coordinator.start_timelapse(
+        task_id = await coordinator.start_timelapse(
             camera_entity_id=entity_id,
             interval=interval,
             duration=duration,
             output_path=output_path,
         )
+        
+        # Return the task_id to the caller
+        return {ATTR_TASK_ID: task_id}
     
     async def stop_timelapse(call: ServiceCall) -> None:
         """Handle the service call to stop timelapse."""
         entity_id = call.data.get(ATTR_ENTITY_ID)
-        await coordinator.stop_timelapse(entity_id=entity_id)
-    
+        task_id = call.data.get(ATTR_TASK_ID)
+        await coordinator.stop_timelapse(entity_id=entity_id, task_id=task_id)
+        
+    async def list_tasks(call: ServiceCall) -> None:
+        """Handle the service call to list timelapse tasks."""
+        tasks = await coordinator.list_tasks()
+        return {ATTR_TASKS: tasks}
     
     # Register services
     hass.services.async_register(
@@ -77,9 +88,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         stop_timelapse,
         schema=vol.Schema({
             vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+            vol.Optional(ATTR_TASK_ID): cv.string,
         }),
     )
     
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_LIST_TASKS,
+        list_tasks,
+        schema=vol.Schema({}),
+    )
     
     return True
 
