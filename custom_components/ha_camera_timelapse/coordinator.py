@@ -649,20 +649,22 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 _LOGGER.info("Output will be saved to: %s", output_file)
                 _LOGGER.info("Using frame pattern: %s", frame_pattern)
                 
-                # 优化ffmpeg命令，降低CPU使用率
+                # 优化ffmpeg命令，提高兼容性和质量
                 cmd = [
                     ffmpeg_path,
                     "-y",  # 覆盖现有文件
                     "-framerate", "10",  # 输入帧率
                     "-i", frame_pattern,  # 输入模式
                     "-c:v", "libx264",  # 视频编码器
-                    "-preset", "veryfast",  # 使用更平衡的预设，比ultrafast质量更好，资源消耗适中
-                    "-crf", "28",  # 使用更高的CRF值降低比特率和文件大小，减轻IO压力
+                    "-preset", "medium",  # 使用更平衡的预设，提高兼容性
+                    "-crf", "23",  # 使用更好的质量，提高兼容性
                     "-threads", str(MAX_FFMPEG_THREADS),  # 限制线程数，使用配置常量
                     "-pix_fmt", "yuv420p",  # 像素格式
-                    "-tune", "fastdecode",  # 优化解码速度
-                    "-profile:v", "baseline",  # 使用基本配置文件增加兼容性
-                    "-level", "3.0",  # 限制级别
+                    "-movflags", "+faststart",  # 优化网络播放
+                    "-profile:v", "high",  # 使用高配置文件提高兼容性
+                    "-level", "4.0",  # 提高级别
+                    "-metadata", f"creation_time={datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}",  # 添加创建时间元数据
+                    "-metadata", "encoder=Home Assistant Camera Timelapse",  # 添加编码器信息
                     output_file
                 ]
             else:
@@ -693,7 +695,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                     _LOGGER.error("Error creating input file list: %s", e)
                     raise HomeAssistantError(f"Error creating input file list: {str(e)}")
                 
-                # 优化ffmpeg命令，降低资源使用
+                # 优化ffmpeg命令，提高兼容性和质量
                 cmd = [
                     ffmpeg_path,
                     "-y",  # 覆盖现有文件
@@ -701,14 +703,16 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                     "-safe", "0",
                     "-i", input_list_path,
                     "-c:v", "libx264",  # 视频编码器
-                    "-preset", "veryfast",  # 使用更平衡的预设
-                    "-crf", "28",  # 使用更高的CRF值降低比特率
+                    "-preset", "medium",  # 使用更平衡的预设，提高兼容性
+                    "-crf", "23",  # 使用更好的质量，提高兼容性
                     "-threads", str(MAX_FFMPEG_THREADS),  # 使用配置常量限制线程数
                     "-pix_fmt", "yuv420p",  # 像素格式
                     "-r", "10",  # 输出帧率
-                    "-tune", "fastdecode",  # 优化解码速度
-                    "-profile:v", "baseline",  # 使用基本配置文件
-                    "-level", "3.0",  # 限制级别
+                    "-movflags", "+faststart",  # 优化网络播放
+                    "-profile:v", "high",  # 使用高配置文件提高兼容性
+                    "-level", "4.0",  # 提高级别
+                    "-metadata", f"creation_time={datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}",  # 添加创建时间元数据
+                    "-metadata", "encoder=Home Assistant Camera Timelapse",  # 添加编码器信息
                     output_file
                 ]
             
