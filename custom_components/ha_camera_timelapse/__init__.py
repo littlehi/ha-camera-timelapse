@@ -99,6 +99,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         schema=vol.Schema({}),
     )
     
+    # Google Photos 上传功能使用官方集成，无需额外服务
+    
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -18,10 +18,14 @@ from .const import (
     CONF_DEFAULT_DURATION,
     CONF_DEFAULT_OUTPUT_PATH,
     CONF_DEBUG_MODE,
+    CONF_UPLOAD_TO_GOOGLE_PHOTOS,
+    CONF_GOOGLE_PHOTOS_ALBUM,
     DEFAULT_INTERVAL,
     DEFAULT_DURATION,
     DEFAULT_OUTPUT_PATH,
     DEFAULT_DEBUG,
+    DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS,
+    DEFAULT_GOOGLE_PHOTOS_ALBUM,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -92,6 +96,8 @@ class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_DEFAULT_DURATION, default=DEFAULT_DURATION): cv.positive_int,
                 vol.Optional(CONF_DEFAULT_OUTPUT_PATH, default=DEFAULT_OUTPUT_PATH): cv.string,
                 vol.Optional(CONF_DEBUG_MODE, default=DEFAULT_DEBUG): cv.boolean,
+                vol.Optional(CONF_UPLOAD_TO_GOOGLE_PHOTOS, default=DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS): cv.boolean,
+                vol.Optional(CONF_GOOGLE_PHOTOS_ALBUM, default=DEFAULT_GOOGLE_PHOTOS_ALBUM): cv.string,
             }
         )
 
@@ -140,6 +146,20 @@ class CameraTimelapseOptionsFlow(config_entries.OptionsFlow):
                     self.config_entry.data.get(CONF_DEBUG_MODE, DEFAULT_DEBUG)
                 ),
             ): cv.boolean,
+            vol.Optional(
+                CONF_UPLOAD_TO_GOOGLE_PHOTOS,
+                default=self.config_entry.options.get(
+                    CONF_UPLOAD_TO_GOOGLE_PHOTOS,
+                    self.config_entry.data.get(CONF_UPLOAD_TO_GOOGLE_PHOTOS, DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS)
+                ),
+            ): cv.boolean,
+            vol.Optional(
+                CONF_GOOGLE_PHOTOS_ALBUM,
+                default=self.config_entry.options.get(
+                    CONF_GOOGLE_PHOTOS_ALBUM,
+                    self.config_entry.data.get(CONF_GOOGLE_PHOTOS_ALBUM, DEFAULT_GOOGLE_PHOTOS_ALBUM)
+                ),
+            ): cv.string,
         }
 
         return self.async_show_form(

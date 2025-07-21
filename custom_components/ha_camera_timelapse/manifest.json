@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "documentation": "https://github.com/littlehi/ha-camera-timelapse",
   "issue_tracker": "https://github.com/littlehi/ha-camera-timelapse/issues",
-  "dependencies": [],
+  "dependencies": ["google_photos"],
   "codeowners": ["@littlehi"],
   "config_flow": true,
   "iot_class": "local_polling",

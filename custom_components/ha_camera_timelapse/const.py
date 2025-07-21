@@ -46,4 +46,11 @@ ATTR_TASKS = "tasks"
 STATUS_IDLE = "idle"
 STATUS_RECORDING = "recording"
 STATUS_PROCESSING = "processing"
+STATUS_UPLOADING = "uploading"
 STATUS_ERROR = "error"
+
+# Google Photos settings
+CONF_UPLOAD_TO_GOOGLE_PHOTOS = "upload_to_google_photos"
+CONF_GOOGLE_PHOTOS_ALBUM = "google_photos_album"
+DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS = False
+DEFAULT_GOOGLE_PHOTOS_ALBUM = "Home Assistant Timelapses"

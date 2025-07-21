@@ -15,6 +15,8 @@ import requests
 from typing import Any, Dict, List, Optional, Tuple
 from functools import partial
 
+from .google_photos import async_upload_to_google_photos
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -32,11 +34,16 @@ from .const import (
     STATUS_IDLE,
     STATUS_RECORDING,
     STATUS_PROCESSING,
+    STATUS_UPLOADING,
     STATUS_ERROR,
     ATTR_TASKS,
     MAX_CONCURRENT_TASKS,
     MAX_FRAME_BATCH,
     MAX_FFMPEG_THREADS,
+    CONF_UPLOAD_TO_GOOGLE_PHOTOS,
+    CONF_GOOGLE_PHOTOS_ALBUM,
+    DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS,
+    DEFAULT_GOOGLE_PHOTOS_ALBUM,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,6 +60,16 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         self._timelapse_data = {}
         self._task_registry = {}  # New task registry for management
         self._debug = entry.options.get("debug", DEFAULT_DEBUG)
+        
+        # Google Photos 上传设置
+        self._upload_to_google_photos = entry.options.get(
+            CONF_UPLOAD_TO_GOOGLE_PHOTOS, 
+            entry.data.get(CONF_UPLOAD_TO_GOOGLE_PHOTOS, DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS)
+        )
+        self._google_photos_album = entry.options.get(
+            CONF_GOOGLE_PHOTOS_ALBUM, 
+            entry.data.get(CONF_GOOGLE_PHOTOS_ALBUM, DEFAULT_GOOGLE_PHOTOS_ALBUM)
+        )
         
         # 检查Python版本并实现to_thread兼容函数
         self.python_version = sys.version_info
@@ -527,6 +544,24 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             _LOGGER.info("Starting timelapse generation from %d frames", frame_count)
             media_url = await self._generate_timelapse(frame_dir, output_file)
             
+            # Add media URL for frontend playback if available
+            if media_url:
+                self._timelapse_data[camera_entity_id]["media_url"] = media_url
+                
+                # Update task registry
+                if task_id in self._task_registry:
+                    self._task_registry[task_id]["media_url"] = media_url
+                
+                # 如果启用了 Google Photos 上传，上传视频
+                if self._upload_to_google_photos:
+                    success = await self._upload_to_google_photos(output_file, task_id)
+                    if success:
+                        self._timelapse_data[camera_entity_id]["google_photos_uploaded"] = True
+                        
+                        # Update task registry
+                        if task_id in self._task_registry:
+                            self._task_registry[task_id]["google_photos_uploaded"] = True
+            
             # Update status to completed
             self._timelapse_data[camera_entity_id]["status"] = STATUS_IDLE
             self._timelapse_data[camera_entity_id]["progress"] = 100
@@ -537,14 +572,6 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 self._task_registry[task_id]["status"] = STATUS_IDLE
                 self._task_registry[task_id]["progress"] = 100
                 self._task_registry[task_id]["time_remaining"] = 0
-            
-            # Add media URL for frontend playback if available
-            if media_url:
-                self._timelapse_data[camera_entity_id]["media_url"] = media_url
-                
-                # Update task registry
-                if task_id in self._task_registry:
-                    self._task_registry[task_id]["media_url"] = media_url
                 
             _LOGGER.info("Timelapse processing complete for %s", camera_entity_id)
             
@@ -902,6 +929,92 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         loop = asyncio.get_event_loop()
         func_call = partial(func, *args, **kwargs)
         return await loop.run_in_executor(None, func_call)
+    
+    async def _upload_to_google_photos(self, output_file: str, task_id: Optional[str] = None) -> bool:
+        """上传视频到 Google Photos.
+        
+        Args:
+            output_file: 视频文件路径
+            task_id: 可选的任务ID
+            
+        Returns:
+            成功时返回True，否则返回False
+        """
+        if not self._upload_to_google_photos:
+            _LOGGER.debug("Google Photos upload not enabled")
+            return False
+            
+        try:
+            _LOGGER.info("Uploading timelapse to Google Photos: %s", output_file)
+            
+            # 更新状态为上传中
+            camera_entity_id = None
+            for entity_id, data in self._timelapse_data.items():
+                if data.get("output_file") == output_file:
+                    data["status"] = STATUS_UPLOADING
+                    camera_entity_id = entity_id
+                    if not task_id:
+                        task_id = data.get("task_id")
+                    break
+                    
+            if task_id and task_id in self._task_registry:
+                self._task_registry[task_id]["status"] = STATUS_UPLOADING
+                self._task_registry[task_id]["progress"] = 97  # 上传状态
+            
+            self.async_set_updated_data(self._timelapse_data)
+            
+            # 使用官方集成上传视频
+            success = await async_upload_to_google_photos(
+                self.hass,
+                output_file, 
+                self._google_photos_album,
+                task_id
+            )
+            
+            if success:
+                _LOGGER.info("Successfully uploaded to Google Photos")
+                
+                # 更新状态
+                if camera_entity_id and camera_entity_id in self._timelapse_data:
+                    self._timelapse_data[camera_entity_id]["google_photos_uploaded"] = True
+                    self._timelapse_data[camera_entity_id]["status"] = STATUS_IDLE
+                    
+                if task_id and task_id in self._task_registry:
+                    self._task_registry[task_id]["google_photos_uploaded"] = True
+                    self._task_registry[task_id]["status"] = STATUS_IDLE
+                    
+                self.async_set_updated_data(self._timelapse_data)
+                return True
+            else:
+                _LOGGER.error("Failed to upload to Google Photos")
+                
+                # 更新状态
+                if camera_entity_id and camera_entity_id in self._timelapse_data:
+                    self._timelapse_data[camera_entity_id]["status"] = STATUS_IDLE
+                    self._timelapse_data[camera_entity_id]["error_message"] = "Failed to upload to Google Photos"
+                    
+                if task_id and task_id in self._task_registry:
+                    self._task_registry[task_id]["status"] = STATUS_IDLE
+                    self._task_registry[task_id]["error_message"] = "Failed to upload to Google Photos"
+                
+                self.async_set_updated_data(self._timelapse_data)
+                return False
+                
+        except Exception as upload_err:
+            _LOGGER.error("Error uploading to Google Photos: %s", upload_err)
+            _LOGGER.exception("Detailed upload error information")
+            
+            # 更新状态
+            if camera_entity_id and camera_entity_id in self._timelapse_data:
+                self._timelapse_data[camera_entity_id]["status"] = STATUS_IDLE
+                self._timelapse_data[camera_entity_id]["error_message"] = f"Google Photos upload error: {str(upload_err)}"
+                
+            if task_id and task_id in self._task_registry:
+                self._task_registry[task_id]["status"] = STATUS_IDLE
+                self._task_registry[task_id]["error_message"] = f"Google Photos upload error: {str(upload_err)}"
+            
+            self.async_set_updated_data(self._timelapse_data)
+            return False
     
     async def async_shutdown(self) -> None:
         """Cancel any active timelapse tasks."""
