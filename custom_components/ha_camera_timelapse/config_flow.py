@@ -44,6 +44,18 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, str]:
     
     return {}
 
+@callback
+def get_google_photos_entries(hass):
+    """Get Google Photos config entries."""
+    entries = []
+    for entry in hass.config_entries.async_entries("google_photos"):
+        if entry.state == "loaded":
+            entries.append({
+                "value": entry.entry_id,
+                "label": f"{entry.title or 'Google Photos'} ({entry.entry_id})"
+            })
+    return entries
+
 class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Camera Timelapse."""
 
@@ -90,13 +102,7 @@ class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Generate schema with dropdown for camera selection
         # 获取所有可用的 Google Photos 配置条目
-        google_photos_entries = []
-        for entry in self.hass.config_entries.async_entries("google_photos"):
-            if entry.state == "loaded":
-                google_photos_entries.append({
-                    "value": entry.entry_id,
-                    "label": f"{entry.title} ({entry.entry_id})"
-                })
+        google_photos_entries = get_google_photos_entries(self.hass)
         
         schema = vol.Schema(
             {
@@ -141,13 +147,7 @@ class CameraTimelapseOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         # 获取所有可用的 Google Photos 配置条目
-        google_photos_entries = []
-        for entry in self.hass.config_entries.async_entries("google_photos"):
-            if entry.state == "loaded":
-                google_photos_entries.append({
-                    "value": entry.entry_id,
-                    "label": f"{entry.title} ({entry.entry_id})"
-                })
+        google_photos_entries = get_google_photos_entries(self.hass)
         
         options = {
             vol.Optional(
