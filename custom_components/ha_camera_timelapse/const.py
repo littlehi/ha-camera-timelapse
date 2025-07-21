@@ -52,5 +52,7 @@ STATUS_ERROR = "error"
 # Google Photos settings
 CONF_UPLOAD_TO_GOOGLE_PHOTOS = "upload_to_google_photos"
 CONF_GOOGLE_PHOTOS_ALBUM = "google_photos_album"
+CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID = "google_photos_config_entry_id"
 DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS = False
 DEFAULT_GOOGLE_PHOTOS_ALBUM = "Home Assistant Timelapses"
+DEFAULT_GOOGLE_PHOTOS_CONFIG_ENTRY_ID = None
