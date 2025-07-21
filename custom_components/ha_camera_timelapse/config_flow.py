@@ -48,12 +48,22 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, str]:
 def get_google_photos_entries(hass):
     """Get Google Photos config entries."""
     entries = []
-    for entry in hass.config_entries.async_entries("google_photos"):
+    
+    # 检查是否有 Google Photos 集成
+    _LOGGER.debug("Checking for Google Photos integration")
+    all_entries = list(hass.config_entries.async_entries("google_photos"))
+    _LOGGER.debug("Found %d Google Photos config entries", len(all_entries))
+    
+    for entry in all_entries:
+        _LOGGER.debug("Google Photos entry: %s (state: %s)", entry.entry_id, entry.state)
         if entry.state == "loaded":
             entries.append({
                 "value": entry.entry_id,
                 "label": f"{entry.title or 'Google Photos'} ({entry.entry_id})"
             })
+            _LOGGER.debug("Added Google Photos entry to options: %s", entry.entry_id)
+    
+    _LOGGER.debug("Returning %d Google Photos entries for selection", len(entries))
     return entries
 
 class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
