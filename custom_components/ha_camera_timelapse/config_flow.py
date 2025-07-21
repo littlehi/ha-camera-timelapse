@@ -20,12 +20,14 @@ from .const import (
     CONF_DEBUG_MODE,
     CONF_UPLOAD_TO_GOOGLE_PHOTOS,
     CONF_GOOGLE_PHOTOS_ALBUM,
+    CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
     DEFAULT_INTERVAL,
     DEFAULT_DURATION,
     DEFAULT_OUTPUT_PATH,
     DEFAULT_DEBUG,
     DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS,
     DEFAULT_GOOGLE_PHOTOS_ALBUM,
+    DEFAULT_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -87,6 +89,15 @@ class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "unknown"
 
         # Generate schema with dropdown for camera selection
+        # 获取所有可用的 Google Photos 配置条目
+        google_photos_entries = []
+        for entry in self.hass.config_entries.async_entries("google_photos"):
+            if entry.state == "loaded":
+                google_photos_entries.append({
+                    "value": entry.entry_id,
+                    "label": f"{entry.title} ({entry.entry_id})"
+                })
+        
         schema = vol.Schema(
             {
                 vol.Required(CONF_CAMERA_ENTITY_ID): selector.EntitySelector(
@@ -100,6 +111,18 @@ class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_GOOGLE_PHOTOS_ALBUM, default=DEFAULT_GOOGLE_PHOTOS_ALBUM): cv.string,
             }
         )
+        
+        # 如果有可用的 Google Photos 配置条目，添加选择器
+        if google_photos_entries:
+            schema = schema.extend({
+                vol.Optional(CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=google_photos_entries,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        translation_key="google_photos_account"
+                    )
+                ),
+            })
 
         return self.async_show_form(
             step_id="user", data_schema=schema, errors=errors
@@ -117,6 +140,15 @@ class CameraTimelapseOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        # 获取所有可用的 Google Photos 配置条目
+        google_photos_entries = []
+        for entry in self.hass.config_entries.async_entries("google_photos"):
+            if entry.state == "loaded":
+                google_photos_entries.append({
+                    "value": entry.entry_id,
+                    "label": f"{entry.title} ({entry.entry_id})"
+                })
+        
         options = {
             vol.Optional(
                 CONF_DEFAULT_INTERVAL,
@@ -161,6 +193,24 @@ class CameraTimelapseOptionsFlow(config_entries.OptionsFlow):
                 ),
             ): cv.string,
         }
+        
+        # 如果有可用的 Google Photos 配置条目，添加选择器
+        if google_photos_entries:
+            current_entry_id = self.config_entry.options.get(
+                CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
+                self.config_entry.data.get(CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID)
+            )
+            
+            options[vol.Optional(
+                CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
+                default=current_entry_id,
+            )] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=google_photos_entries,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key="google_photos_account"
+                )
+            )
 
         return self.async_show_form(
             step_id="init",

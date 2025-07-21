@@ -70,6 +70,10 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             CONF_GOOGLE_PHOTOS_ALBUM, 
             entry.data.get(CONF_GOOGLE_PHOTOS_ALBUM, DEFAULT_GOOGLE_PHOTOS_ALBUM)
         )
+        self._google_photos_config_entry_id = entry.options.get(
+            CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID, 
+            entry.data.get(CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID, DEFAULT_GOOGLE_PHOTOS_CONFIG_ENTRY_ID)
+        )
         
         # 检查Python版本并实现to_thread兼容函数
         self.python_version = sys.version_info
@@ -968,7 +972,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 self.hass,
                 output_file, 
                 self._google_photos_album,
-                task_id
+                self._google_photos_config_entry_id
             )
             
             if success:
