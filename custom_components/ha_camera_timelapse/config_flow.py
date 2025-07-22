@@ -128,7 +128,8 @@ class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         
-        # 如果有可用的 Google Photos 配置条目，添加选择器
+        # 添加 Google Photos 配置条目选择器
+        # 如果有可用的 Google Photos 配置条目，使用下拉菜单
         if google_photos_entries:
             schema = schema.extend({
                 vol.Optional(CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID): selector.SelectSelector(
@@ -138,6 +139,11 @@ class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         translation_key="google_photos_account"
                     )
                 ),
+            })
+        # 否则，使用文本输入框
+        else:
+            schema = schema.extend({
+                vol.Optional(CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID): cv.string,
             })
 
         return self.async_show_form(
@@ -204,13 +210,14 @@ class CameraTimelapseOptionsFlow(config_entries.OptionsFlow):
             ): cv.string,
         }
         
-        # 如果有可用的 Google Photos 配置条目，添加选择器
+        # 获取当前的 Google Photos 配置条目 ID
+        current_entry_id = self.config_entry.options.get(
+            CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
+            self.config_entry.data.get(CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID)
+        )
+        
+        # 如果有可用的 Google Photos 配置条目，使用下拉菜单
         if google_photos_entries:
-            current_entry_id = self.config_entry.options.get(
-                CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
-                self.config_entry.data.get(CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID)
-            )
-            
             options[vol.Optional(
                 CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
                 default=current_entry_id,
@@ -221,6 +228,12 @@ class CameraTimelapseOptionsFlow(config_entries.OptionsFlow):
                     translation_key="google_photos_account"
                 )
             )
+        # 否则，使用文本输入框
+        else:
+            options[vol.Optional(
+                CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
+                default=current_entry_id,
+            )] = cv.string
 
         return self.async_show_form(
             step_id="init",
