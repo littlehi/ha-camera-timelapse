@@ -64,7 +64,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         self._debug = entry.options.get("debug", DEFAULT_DEBUG)
         
         # Google Photos 上传设置
-        self._upload_to_google_photos = entry.options.get(
+        self._upload_to_google_photos_enabled = entry.options.get(
             CONF_UPLOAD_TO_GOOGLE_PHOTOS, 
             entry.data.get(CONF_UPLOAD_TO_GOOGLE_PHOTOS, DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS)
         )
@@ -315,7 +315,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                         _LOGGER.info("Timelapse completed and saved to: %s", output_file)
                         
                         # 如果启用了 Google Photos 上传，上传视频
-                        if self._upload_to_google_photos:
+                        if self._upload_to_google_photos_enabled:
                             _LOGGER.info("尝试上传视频到 Google Photos")
                             success = await self._upload_to_google_photos(output_file, task_id)
                             if success:
@@ -568,11 +568,11 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                     self._task_registry[task_id]["media_url"] = media_url
                 
                 # 如果启用了 Google Photos 上传，上传视频
-                _LOGGER.info("检查是否启用了 Google Photos 上传: %s", self._upload_to_google_photos)
+                _LOGGER.info("检查是否启用了 Google Photos 上传: %s", self._upload_to_google_photos_enabled)
                 _LOGGER.info("Google Photos 相册: %s", self._google_photos_album)
                 _LOGGER.info("Google Photos 配置条目 ID: %s", self._google_photos_config_entry_id)
                 
-                if self._upload_to_google_photos:
+                if self._upload_to_google_photos_enabled:
                     _LOGGER.info("Google Photos 上传已启用，开始上传视频: %s", output_file)
                     success = await self._upload_to_google_photos(output_file, task_id)
                     if success:
@@ -965,7 +965,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         Returns:
             成功时返回True，否则返回False
         """
-        if not self._upload_to_google_photos:
+        if not self._upload_to_google_photos_enabled:
             _LOGGER.debug("Google Photos 上传未启用")
             return False
             
