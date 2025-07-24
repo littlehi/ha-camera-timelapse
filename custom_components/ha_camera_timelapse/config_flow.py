@@ -56,7 +56,10 @@ def get_google_photos_entries(hass):
     
     for entry in all_entries:
         _LOGGER.debug("Google Photos entry: %s (state: %s)", entry.entry_id, entry.state)
-        if entry.state == "loaded":
+        # 注意：entry.state 可能是一个枚举值，需要转换为字符串进行比较
+        entry_state = str(entry.state).lower()
+        if "load" in entry_state:  # 匹配 "loaded", "LOADED", "ConfigEntryState.LOADED" 等
+            _LOGGER.debug("Found loaded Google Photos entry: %s", entry.entry_id)
             entries.append({
                 "value": entry.entry_id,
                 "label": f"{entry.title or 'Google Photos'} ({entry.entry_id})"
