@@ -947,11 +947,22 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             成功时返回True，否则返回False
         """
         if not self._upload_to_google_photos:
-            _LOGGER.debug("Google Photos upload not enabled")
+            _LOGGER.debug("Google Photos 上传未启用")
             return False
             
         try:
-            _LOGGER.info("Uploading timelapse to Google Photos: %s", output_file)
+            _LOGGER.info("正在上传延时摄影视频到 Google Photos: %s", output_file)
+            _LOGGER.info("Google Photos 相册: %s", self._google_photos_album)
+            _LOGGER.info("Google Photos 配置条目 ID: %s", self._google_photos_config_entry_id)
+            
+            # 检查文件是否存在
+            import os
+            if not os.path.exists(output_file):
+                _LOGGER.error("文件不存在: %s", output_file)
+                return False
+            
+            file_size = os.path.getsize(output_file)
+            _LOGGER.info("文件大小: %d 字节 (%.2f MB)", file_size, file_size / (1024 * 1024))
             
             # 更新状态为上传中
             camera_entity_id = None
@@ -969,7 +980,25 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             
             self.async_set_updated_data(self._timelapse_data)
             
+            # 检查 Google Photos 集成是否已配置
+            if "google_photos" not in self.hass.config.components:
+                error_msg = "Home Assistant 中未配置 Google Photos 集成"
+                _LOGGER.error(error_msg)
+                
+                # 更新状态
+                if camera_entity_id and camera_entity_id in self._timelapse_data:
+                    self._timelapse_data[camera_entity_id]["status"] = STATUS_IDLE
+                    self._timelapse_data[camera_entity_id]["error_message"] = error_msg
+                    
+                if task_id and task_id in self._task_registry:
+                    self._task_registry[task_id]["status"] = STATUS_IDLE
+                    self._task_registry[task_id]["error_message"] = error_msg
+                
+                self.async_set_updated_data(self._timelapse_data)
+                return False
+            
             # 使用官方集成上传视频
+            _LOGGER.info("调用 async_upload_to_google_photos 函数")
             success = await async_upload_to_google_photos(
                 self.hass,
                 output_file, 
@@ -978,7 +1007,7 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             )
             
             if success:
-                _LOGGER.info("Successfully uploaded to Google Photos")
+                _LOGGER.info("成功上传到 Google Photos")
                 
                 # 更新状态
                 if camera_entity_id and camera_entity_id in self._timelapse_data:
@@ -992,32 +1021,35 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 self.async_set_updated_data(self._timelapse_data)
                 return True
             else:
-                _LOGGER.error("Failed to upload to Google Photos")
+                error_msg = "上传到 Google Photos 失败"
+                _LOGGER.error(error_msg)
                 
                 # 更新状态
                 if camera_entity_id and camera_entity_id in self._timelapse_data:
                     self._timelapse_data[camera_entity_id]["status"] = STATUS_IDLE
-                    self._timelapse_data[camera_entity_id]["error_message"] = "Failed to upload to Google Photos"
+                    self._timelapse_data[camera_entity_id]["error_message"] = error_msg
                     
                 if task_id and task_id in self._task_registry:
                     self._task_registry[task_id]["status"] = STATUS_IDLE
-                    self._task_registry[task_id]["error_message"] = "Failed to upload to Google Photos"
+                    self._task_registry[task_id]["error_message"] = error_msg
                 
                 self.async_set_updated_data(self._timelapse_data)
                 return False
                 
         except Exception as upload_err:
-            _LOGGER.error("Error uploading to Google Photos: %s", upload_err)
-            _LOGGER.exception("Detailed upload error information")
+            import traceback
+            error_msg = f"上传到 Google Photos 时出错: {str(upload_err)}"
+            _LOGGER.error(error_msg)
+            _LOGGER.error(traceback.format_exc())
             
             # 更新状态
             if camera_entity_id and camera_entity_id in self._timelapse_data:
                 self._timelapse_data[camera_entity_id]["status"] = STATUS_IDLE
-                self._timelapse_data[camera_entity_id]["error_message"] = f"Google Photos upload error: {str(upload_err)}"
+                self._timelapse_data[camera_entity_id]["error_message"] = error_msg
                 
             if task_id and task_id in self._task_registry:
                 self._task_registry[task_id]["status"] = STATUS_IDLE
-                self._task_registry[task_id]["error_message"] = f"Google Photos upload error: {str(upload_err)}"
+                self._task_registry[task_id]["error_message"] = error_msg
             
             self.async_set_updated_data(self._timelapse_data)
             return False
