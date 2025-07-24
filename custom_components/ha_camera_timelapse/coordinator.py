@@ -313,6 +313,15 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                     if media_url:
                         self._timelapse_data[entity_id]["media_url"] = media_url
                         _LOGGER.info("Timelapse completed and saved to: %s", output_file)
+                        
+                        # 如果启用了 Google Photos 上传，上传视频
+                        if self._upload_to_google_photos:
+                            _LOGGER.info("尝试上传视频到 Google Photos")
+                            success = await self._upload_to_google_photos(output_file, task_id)
+                            if success:
+                                _LOGGER.info("成功上传视频到 Google Photos")
+                            else:
+                                _LOGGER.error("上传视频到 Google Photos 失败")
                     
                 except Exception as e:
                     _LOGGER.error("Error generating timelapse after manual stop: %s", e)
@@ -559,14 +568,24 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                     self._task_registry[task_id]["media_url"] = media_url
                 
                 # 如果启用了 Google Photos 上传，上传视频
+                _LOGGER.info("检查是否启用了 Google Photos 上传: %s", self._upload_to_google_photos)
+                _LOGGER.info("Google Photos 相册: %s", self._google_photos_album)
+                _LOGGER.info("Google Photos 配置条目 ID: %s", self._google_photos_config_entry_id)
+                
                 if self._upload_to_google_photos:
+                    _LOGGER.info("Google Photos 上传已启用，开始上传视频: %s", output_file)
                     success = await self._upload_to_google_photos(output_file, task_id)
                     if success:
+                        _LOGGER.info("成功上传视频到 Google Photos")
                         self._timelapse_data[camera_entity_id]["google_photos_uploaded"] = True
                         
                         # Update task registry
                         if task_id in self._task_registry:
                             self._task_registry[task_id]["google_photos_uploaded"] = True
+                    else:
+                        _LOGGER.error("上传视频到 Google Photos 失败")
+                else:
+                    _LOGGER.info("Google Photos 上传未启用，跳过上传")
             
             # Update status to completed
             self._timelapse_data[camera_entity_id]["status"] = STATUS_IDLE
