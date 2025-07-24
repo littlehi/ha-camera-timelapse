@@ -35,33 +35,76 @@ async def async_upload_to_google_photos(
             _LOGGER.error("Google Photos integration is not configured in Home Assistant")
             return False
             
-        # Import the upload function from the official integration
+        # Try to use the Google Photos service to upload the file
         try:
-            from homeassistant.components.google_photos import async_upload_file
-        except ImportError:
-            _LOGGER.error("Failed to import Google Photos integration")
-            return False
-        
-        # 检查函数签名，看是否支持 config_entry_id 参数
-        import inspect
-        sig = inspect.signature(async_upload_file)
-        supports_config_entry = "config_entry_id" in sig.parameters
-        
-        # 使用官方集成上传文件
-        if supports_config_entry and config_entry_id:
-            _LOGGER.info("Using specific Google Photos config entry: %s", config_entry_id)
-            result = await async_upload_file(hass, file_path, album_name, config_entry_id=config_entry_id)
-        else:
+            # Check if the upload service is available
+            service_domain = "google_photos"
+            service_name = "upload"
+            
+            if not hass.services.has_service(service_domain, service_name):
+                _LOGGER.error("Google Photos upload service is not available")
+                _LOGGER.info("Available Google Photos services: %s", 
+                           [s for s in hass.services.async_services().get(service_domain, {}).keys()])
+                return False
+            
+            # Prepare service data
+            service_data = {
+                "filename": file_path,
+            }
+            
+            if album_name:
+                service_data["album"] = album_name
+                
             if config_entry_id:
-                _LOGGER.warning("Config entry ID specified but not supported by Google Photos integration")
-            result = await async_upload_file(hass, file_path, album_name)
-        
-        if result:
-            _LOGGER.info("Successfully uploaded file to Google Photos")
+                service_data["config_entry_id"] = config_entry_id
+            
+            _LOGGER.info("Calling Google Photos upload service with data: %s", service_data)
+            
+            # Call the service
+            await hass.services.async_call(
+                service_domain,
+                service_name,
+                service_data,
+                blocking=True
+            )
+            
+            _LOGGER.info("Successfully uploaded file to Google Photos via service")
             return True
-        else:
-            _LOGGER.error("Failed to upload file to Google Photos")
-            return False
+            
+        except Exception as service_err:
+            _LOGGER.error("Failed to upload via Google Photos service: %s", service_err)
+            
+            # Fallback: Try direct import approach (for older versions)
+            try:
+                from homeassistant.components.google_photos import async_upload_file
+                _LOGGER.info("Trying direct function call as fallback")
+                
+                # 检查函数签名，看是否支持 config_entry_id 参数
+                import inspect
+                sig = inspect.signature(async_upload_file)
+                supports_config_entry = "config_entry_id" in sig.parameters
+                
+                # 使用官方集成上传文件
+                if supports_config_entry and config_entry_id:
+                    _LOGGER.info("Using specific Google Photos config entry: %s", config_entry_id)
+                    result = await async_upload_file(hass, file_path, album_name, config_entry_id=config_entry_id)
+                else:
+                    if config_entry_id:
+                        _LOGGER.warning("Config entry ID specified but not supported by Google Photos integration")
+                    result = await async_upload_file(hass, file_path, album_name)
+                
+                if result:
+                    _LOGGER.info("Successfully uploaded file to Google Photos via direct function")
+                    return True
+                else:
+                    _LOGGER.error("Failed to upload file to Google Photos via direct function")
+                    return False
+                    
+            except ImportError as import_err:
+                _LOGGER.error("Failed to import Google Photos integration: %s", import_err)
+                _LOGGER.error("The Google Photos integration may not support direct file uploads from custom components")
+                _LOGGER.info("Please check if the Google Photos integration is properly installed and configured")
+                return False
             
     except Exception as err:
         _LOGGER.error("Error uploading file to Google Photos: %s", err)
