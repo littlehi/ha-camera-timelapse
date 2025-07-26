@@ -1,12 +1,32 @@
 # Camera Timelapse for Home Assistant
 
-A Home Assistant custom component that creates timelapse videos from camera entities.
+A Home Assistant custom component that creates timelapse videos from camera entities with Google Photos integration and smart storage management.
 
-## Features
+## ✨ Features
 
-- Select any camera entity to create a timelapse
-- Control the timelapse creation process (start/stop)
-- Configure timelapse parameters (interval, duration, etc.)
+### Core Functionality
+- 📹 Create timelapse videos from any camera entity
+- ⏯️ Full control over timelapse process (start/stop/monitor)
+- ⚙️ Configurable parameters (interval, duration, output path)
+- 📊 Real-time progress tracking and status monitoring
+
+### Google Photos Integration
+- ☁️ Automatic upload to Google Photos
+- 📁 Custom album organization
+- 🔄 Multiple account support
+- 🛡️ Robust error handling and retry logic
+
+### Smart Storage Management
+- 🗑️ **NEW**: Auto-delete local files after successful upload
+- 💾 Configurable storage behavior
+- 📈 File size tracking and logging
+- 🔒 Safe deletion with permission checks
+
+### User Experience
+- 🌐 Multi-language support (English/Chinese)
+- 🎛️ Easy configuration through Home Assistant UI
+- 📝 Detailed logging and troubleshooting
+- 🔄 Task management and history
 
 ## Installation
 
@@ -28,9 +48,29 @@ A Home Assistant custom component that creates timelapse videos from camera enti
 
 ## Configuration
 
+### Initial Setup
+
 1. Go to Home Assistant Settings → Devices & Services
 2. Click "Add Integration" and search for "Camera Timelapse"
-3. Follow the on-screen instructions to set up your timelapse
+3. Select your camera entity and configure default settings:
+   - **Camera Entity**: Choose the camera to use for timelapses
+   - **Default Interval**: Time between captures (seconds)
+   - **Default Duration**: How long to record (minutes)
+   - **Default Output Path**: Where to save videos
+   - **Debug Mode**: Enable detailed logging
+
+### Google Photos Setup (Optional)
+
+4. Configure Google Photos integration:
+   - **Upload to Google Photos**: Enable automatic upload
+   - **Google Photos Album**: Specify album name (default: "Home Assistant Timelapses")
+   - **Google Photos Account**: Select which account to use (if multiple)
+   - **Delete after upload**: 🆕 Remove local files after successful upload
+
+### Advanced Options
+
+You can modify these settings anytime by going to the integration options:
+- Settings → Devices & Services → Camera Timelapse → Configure
 
 ## Usage
 
