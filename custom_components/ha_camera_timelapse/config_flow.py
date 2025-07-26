@@ -21,6 +21,7 @@ from .const import (
     CONF_UPLOAD_TO_GOOGLE_PHOTOS,
     CONF_GOOGLE_PHOTOS_ALBUM,
     CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
+    CONF_DELETE_AFTER_UPLOAD,
     DEFAULT_INTERVAL,
     DEFAULT_DURATION,
     DEFAULT_OUTPUT_PATH,
@@ -28,6 +29,7 @@ from .const import (
     DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS,
     DEFAULT_GOOGLE_PHOTOS_ALBUM,
     DEFAULT_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
+    DEFAULT_DELETE_AFTER_UPLOAD,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -128,6 +130,7 @@ class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_DEBUG_MODE, default=DEFAULT_DEBUG): cv.boolean,
                 vol.Optional(CONF_UPLOAD_TO_GOOGLE_PHOTOS, default=DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS): cv.boolean,
                 vol.Optional(CONF_GOOGLE_PHOTOS_ALBUM, default=DEFAULT_GOOGLE_PHOTOS_ALBUM): cv.string,
+                vol.Optional(CONF_DELETE_AFTER_UPLOAD, default=DEFAULT_DELETE_AFTER_UPLOAD): cv.boolean,
             }
         )
         
@@ -211,6 +214,13 @@ class CameraTimelapseOptionsFlow(config_entries.OptionsFlow):
                     self.config_entry.data.get(CONF_GOOGLE_PHOTOS_ALBUM, DEFAULT_GOOGLE_PHOTOS_ALBUM)
                 ),
             ): cv.string,
+            vol.Optional(
+                CONF_DELETE_AFTER_UPLOAD,
+                default=self.config_entry.options.get(
+                    CONF_DELETE_AFTER_UPLOAD,
+                    self.config_entry.data.get(CONF_DELETE_AFTER_UPLOAD, DEFAULT_DELETE_AFTER_UPLOAD)
+                ),
+            ): cv.boolean,
         }
         
         # 获取当前的 Google Photos 配置条目 ID

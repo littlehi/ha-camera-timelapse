@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "摄像头延时摄影设置",
+        "description": "选择摄像头实体并配置延时摄影录制的默认设置。",
+        "data": {
+          "camera_entity_id": "摄像头实体",
+          "default_interval": "默认间隔 (秒)",
+          "default_duration": "默认持续时间 (分钟)",
+          "default_output_path": "默认输出路径",
+          "debug_mode": "启用调试模式",
+          "upload_to_google_photos": "上传到 Google Photos",
+          "google_photos_album": "Google Photos 相册",
+          "google_photos_config_entry_id": "Google Photos 账户",
+          "delete_after_upload": "上传成功后删除本地文件"
+        }
+      }
+    },
+    "error": {
+      "not_a_camera": "所选实体不是摄像头",
+      "unknown": "发生意外错误"
+    },
+    "abort": {
+      "already_configured": "此摄像头已配置延时摄影",
+      "no_cameras": "系统中未找到摄像头实体"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "摄像头延时摄影选项",
+        "description": "调整延时摄影录制的默认设置。",
+        "data": {
+          "default_interval": "默认间隔 (秒)",
+          "default_duration": "默认持续时间 (分钟)",
+          "default_output_path": "默认输出路径",
+          "debug_mode": "启用调试模式",
+          "upload_to_google_photos": "上传到 Google Photos",
+          "google_photos_album": "Google Photos 相册",
+          "google_photos_config_entry_id": "Google Photos 账户",
+          "delete_after_upload": "上传成功后删除本地文件"
+        }
+      }
+    }
+  }
+}

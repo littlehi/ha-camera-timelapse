@@ -9,7 +9,11 @@
           "default_interval": "Default Interval (seconds)",
           "default_duration": "Default Duration (minutes)",
           "default_output_path": "Default Output Path",
-          "debug_mode": "Enable Debug Mode"
+          "debug_mode": "Enable Debug Mode",
+          "upload_to_google_photos": "Upload to Google Photos",
+          "google_photos_album": "Google Photos Album",
+          "google_photos_config_entry_id": "Google Photos Account",
+          "delete_after_upload": "Delete local file after successful upload"
         }
       }
     },
@@ -31,7 +35,11 @@
           "default_interval": "Default Interval (seconds)",
           "default_duration": "Default Duration (minutes)",
           "default_output_path": "Default Output Path",
-          "debug_mode": "Enable Debug Mode"
+          "debug_mode": "Enable Debug Mode",
+          "upload_to_google_photos": "Upload to Google Photos",
+          "google_photos_album": "Google Photos Album",
+          "google_photos_config_entry_id": "Google Photos Account",
+          "delete_after_upload": "Delete local file after successful upload"
         }
       }
     }

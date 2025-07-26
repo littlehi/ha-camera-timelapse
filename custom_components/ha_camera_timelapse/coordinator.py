@@ -43,9 +43,11 @@ from .const import (
     CONF_UPLOAD_TO_GOOGLE_PHOTOS,
     CONF_GOOGLE_PHOTOS_ALBUM,
     CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
+    CONF_DELETE_AFTER_UPLOAD,
     DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS,
     DEFAULT_GOOGLE_PHOTOS_ALBUM,
     DEFAULT_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
+    DEFAULT_DELETE_AFTER_UPLOAD,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -75,6 +77,10 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         self._google_photos_config_entry_id = entry.options.get(
             CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID, 
             entry.data.get(CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID, DEFAULT_GOOGLE_PHOTOS_CONFIG_ENTRY_ID)
+        )
+        self._delete_after_upload = entry.options.get(
+            CONF_DELETE_AFTER_UPLOAD,
+            entry.data.get(CONF_DELETE_AFTER_UPLOAD, DEFAULT_DELETE_AFTER_UPLOAD)
         )
         
         # 检查Python版本并实现to_thread兼容函数
@@ -320,6 +326,17 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                             success = await self._upload_to_google_photos(output_file, task_id)
                             if success:
                                 _LOGGER.info("成功上传视频到 Google Photos")
+                                
+                                # 如果启用了上传后删除本地文件，则删除本地文件
+                                if self._delete_after_upload:
+                                    _LOGGER.info("上传后删除本地文件已启用，删除本地视频文件")
+                                    delete_success = await self._delete_local_file(output_file, task_id)
+                                    if delete_success:
+                                        _LOGGER.info("成功删除本地视频文件")
+                                    else:
+                                        _LOGGER.warning("删除本地视频文件失败")
+                                else:
+                                    _LOGGER.info("上传后删除本地文件未启用，保留本地视频文件")
                             else:
                                 _LOGGER.error("上传视频到 Google Photos 失败")
                     
@@ -582,6 +599,22 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                         # Update task registry
                         if task_id in self._task_registry:
                             self._task_registry[task_id]["google_photos_uploaded"] = True
+                        
+                        # 如果启用了上传后删除本地文件，则删除本地文件
+                        if self._delete_after_upload:
+                            _LOGGER.info("上传后删除本地文件已启用，删除本地视频文件")
+                            delete_success = await self._delete_local_file(output_file, task_id)
+                            if delete_success:
+                                _LOGGER.info("成功删除本地视频文件")
+                                self._timelapse_data[camera_entity_id]["local_file_deleted"] = True
+                                
+                                # Update task registry
+                                if task_id in self._task_registry:
+                                    self._task_registry[task_id]["local_file_deleted"] = True
+                            else:
+                                _LOGGER.warning("删除本地视频文件失败")
+                        else:
+                            _LOGGER.info("上传后删除本地文件未启用，保留本地视频文件")
                     else:
                         _LOGGER.error("上传视频到 Google Photos 失败")
                 else:
@@ -1098,3 +1131,44 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         # Remove from registry
         del self._task_registry[task_id]
         await self.async_request_refresh()
+    
+    async def _delete_local_file(self, file_path: str, task_id: Optional[str] = None) -> bool:
+        """删除本地视频文件.
+        
+        Args:
+            file_path: 要删除的文件路径
+            task_id: 可选的任务ID
+            
+        Returns:
+            成功时返回True，否则返回False
+        """
+        try:
+            import os
+            
+            if not os.path.exists(file_path):
+                _LOGGER.warning("要删除的文件不存在: %s", file_path)
+                return False
+            
+            # 获取文件大小用于日志记录
+            file_size = os.path.getsize(file_path)
+            file_size_mb = file_size / (1024 * 1024)
+            
+            _LOGGER.info("删除本地视频文件: %s (%.2f MB)", file_path, file_size_mb)
+            
+            # 删除文件
+            os.remove(file_path)
+            
+            # 验证文件已被删除
+            if not os.path.exists(file_path):
+                _LOGGER.info("成功删除本地视频文件: %s", file_path)
+                return True
+            else:
+                _LOGGER.error("文件删除失败，文件仍然存在: %s", file_path)
+                return False
+                
+        except PermissionError as perm_err:
+            _LOGGER.error("没有权限删除文件 %s: %s", file_path, perm_err)
+            return False
+        except Exception as delete_err:
+            _LOGGER.error("删除本地文件时出错 %s: %s", file_path, delete_err)
+            return False
