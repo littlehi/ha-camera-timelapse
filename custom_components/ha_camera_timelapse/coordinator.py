@@ -716,13 +716,22 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Error checking FFmpeg version: %s", e)
             
             # Try multiple methods for generating the video
-            # Method 1: Direct pattern approach
-            _LOGGER.info("Trying to generate video using direct pattern method...")
-            
             # 优化视频生成，限制使用资源
             # 确保帧按顺序排列
             frame_files = sorted(frame_files)
             first_frame = os.path.join(frame_dir, frame_files[0]) if frame_files else None
+            
+            # 选择倒数第二个图像作为封面
+            poster_frame = None
+            if len(frame_files) >= 2:
+                poster_frame = os.path.join(frame_dir, frame_files[-2])  # 倒数第二个图像
+                _LOGGER.info("Using second-to-last frame as poster: %s", frame_files[-2])
+            elif len(frame_files) == 1:
+                poster_frame = os.path.join(frame_dir, frame_files[0])  # 如果只有一帧，使用第一帧
+                _LOGGER.info("Only one frame available, using it as poster: %s", frame_files[0])
+            
+            # Method 1: Direct pattern approach
+            _LOGGER.info("Trying to generate video using direct pattern method...")
             
             if first_frame and os.path.exists(first_frame):
                 _LOGGER.info("First frame exists: %s", first_frame)
@@ -734,12 +743,19 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 _LOGGER.info("Output will be saved to: %s", output_file)
                 _LOGGER.info("Using frame pattern: %s", frame_pattern)
                 
-                # 优化ffmpeg命令，提高兼容性和质量
+                # 优化ffmpeg命令，提高兼容性和质量，并设置封面
                 cmd = [
                     ffmpeg_path,
                     "-y",  # 覆盖现有文件
                     "-framerate", "10",  # 输入帧率
                     "-i", frame_pattern,  # 输入模式
+                ]
+                
+                # 如果有封面图像，添加封面输入
+                if poster_frame and os.path.exists(poster_frame):
+                    cmd.extend(["-i", poster_frame])  # 添加封面图像作为第二个输入
+                
+                cmd.extend([
                     "-c:v", "libx264",  # 视频编码器
                     "-preset", "medium",  # 使用更平衡的预设，提高兼容性
                     "-crf", "23",  # 使用更好的质量，提高兼容性
@@ -748,10 +764,22 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                     "-movflags", "+faststart",  # 优化网络播放
                     "-profile:v", "high",  # 使用高配置文件提高兼容性
                     "-level", "4.0",  # 提高级别
+                ])
+                
+                # 如果有封面图像，设置封面映射
+                if poster_frame and os.path.exists(poster_frame):
+                    cmd.extend([
+                        "-map", "0:v",  # 映射第一个输入的视频流
+                        "-map", "1:v",  # 映射第二个输入（封面）的视频流
+                        "-c:v:1", "mjpeg",  # 封面使用MJPEG编码
+                        "-disposition:v:1", "attached_pic",  # 设置第二个视频流为附加图片（封面）
+                    ])
+                
+                cmd.extend([
                     "-metadata", f"creation_time={datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}",  # 添加创建时间元数据
                     "-metadata", "encoder=Home Assistant Camera Timelapse",  # 添加编码器信息
                     output_file
-                ]
+                ])
             else:
                 _LOGGER.warning("Cannot find first frame, falling back to concat method")
                 
@@ -780,13 +808,20 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                     _LOGGER.error("Error creating input file list: %s", e)
                     raise HomeAssistantError(f"Error creating input file list: {str(e)}")
                 
-                # 优化ffmpeg命令，提高兼容性和质量
+                # 优化ffmpeg命令，提高兼容性和质量，并设置封面
                 cmd = [
                     ffmpeg_path,
                     "-y",  # 覆盖现有文件
                     "-f", "concat",
                     "-safe", "0",
                     "-i", input_list_path,
+                ]
+                
+                # 如果有封面图像，添加封面输入
+                if poster_frame and os.path.exists(poster_frame):
+                    cmd.extend(["-i", poster_frame])  # 添加封面图像作为第二个输入
+                
+                cmd.extend([
                     "-c:v", "libx264",  # 视频编码器
                     "-preset", "medium",  # 使用更平衡的预设，提高兼容性
                     "-crf", "23",  # 使用更好的质量，提高兼容性
@@ -796,10 +831,22 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                     "-movflags", "+faststart",  # 优化网络播放
                     "-profile:v", "high",  # 使用高配置文件提高兼容性
                     "-level", "4.0",  # 提高级别
+                ])
+                
+                # 如果有封面图像，设置封面映射
+                if poster_frame and os.path.exists(poster_frame):
+                    cmd.extend([
+                        "-map", "0:v",  # 映射第一个输入的视频流
+                        "-map", "1:v",  # 映射第二个输入（封面）的视频流
+                        "-c:v:1", "mjpeg",  # 封面使用MJPEG编码
+                        "-disposition:v:1", "attached_pic",  # 设置第二个视频流为附加图片（封面）
+                    ])
+                
+                cmd.extend([
                     "-metadata", f"creation_time={datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}",  # 添加创建时间元数据
                     "-metadata", "encoder=Home Assistant Camera Timelapse",  # 添加编码器信息
                     output_file
-                ]
+                ])
             
             # Log the frames before processing
             _LOGGER.info("Frame files found (first 5):")

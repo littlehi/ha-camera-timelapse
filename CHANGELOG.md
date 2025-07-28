@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2025-01-29
+
+### 🎨 Enhanced
+- **Video poster/thumbnail**: Modified video generation to use the second-to-last frame as video poster/thumbnail
+  - Provides a more representative preview of the timelapse content
+  - Uses FFmpeg's `attached_pic` disposition to embed the poster frame
+  - Fallback to first frame if only one frame is available
+  - Applies to both direct pattern and concat video generation methods
+
 ## [0.3.0] - 2025-01-27
 
 ### 🎉 Added
