@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2024-12-XX
+
+### 🐛 Critical Bug Fixes
+- **Fixed state change trigger mode not working**: Improved configuration reading logic to properly handle user-selected trigger modes
+- **Enhanced configuration validation**: Added proper fallback logic for reading trigger mode from both entry.data and entry.options
+- **Improved debugging**: Added comprehensive debug logging to help diagnose configuration issues
+
+### 🔧 Technical Improvements
+- Better error handling for invalid trigger mode values
+- Enhanced logging for state change listener setup
+- Improved configuration priority handling
+
+### 📚 Documentation
+- Added hotfix instructions for troubleshooting
+- Enhanced debugging guide
+
 ## [0.4.0] - 2024-12-XX
 
 ### 🎯 Major Features Added
