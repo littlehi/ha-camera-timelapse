@@ -755,25 +755,34 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 if poster_frame and os.path.exists(poster_frame):
                     cmd.extend(["-i", poster_frame])  # 添加封面图像作为第二个输入
                 
-                cmd.extend([
-                    "-c:v", "libx264",  # 视频编码器
-                    "-preset", "medium",  # 使用更平衡的预设，提高兼容性
-                    "-crf", "23",  # 使用更好的质量，提高兼容性
-                    "-threads", str(MAX_FFMPEG_THREADS),  # 限制线程数，使用配置常量
-                    "-pix_fmt", "yuv420p",  # 像素格式
-                    "-movflags", "+faststart",  # 优化网络播放
-                    "-profile:v", "high",  # 使用高配置文件提高兼容性
-                    "-level", "4.0",  # 提高级别
-                ])
-                
                 # 如果有封面图像，设置封面映射
                 if poster_frame and os.path.exists(poster_frame):
                     cmd.extend([
                         "-map", "0:v",  # 映射第一个输入的视频流
                         "-map", "1:v",  # 映射第二个输入（封面）的视频流
+                        "-c:v:0", "libx264",  # 主视频流使用H264编码器
                         "-c:v:1", "mjpeg",  # 封面使用MJPEG编码
+                        "-preset:v:0", "medium",  # 主视频流使用更平衡的预设
+                        "-crf:v:0", "23",  # 主视频流使用更好的质量
+                        "-profile:v:0", "high",  # 只对主视频流使用高配置文件
+                        "-level:v:0", "4.0",  # 只对主视频流提高级别
+                        "-pix_fmt:v:0", "yuv420p",  # 主视频流像素格式
                         "-disposition:v:1", "attached_pic",  # 设置第二个视频流为附加图片（封面）
                     ])
+                else:
+                    cmd.extend([
+                        "-c:v", "libx264",  # 视频编码器
+                        "-preset", "medium",  # 使用更平衡的预设，提高兼容性
+                        "-crf", "23",  # 使用更好的质量，提高兼容性
+                        "-profile:v", "high",  # 使用高配置文件提高兼容性
+                        "-level", "4.0",  # 提高级别
+                        "-pix_fmt", "yuv420p",  # 像素格式
+                    ])
+                
+                cmd.extend([
+                    "-threads", str(MAX_FFMPEG_THREADS),  # 限制线程数，使用配置常量
+                    "-movflags", "+faststart",  # 优化网络播放
+                ])
                 
                 cmd.extend([
                     "-metadata", f"creation_time={datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}",  # 添加创建时间元数据
@@ -821,26 +830,36 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 if poster_frame and os.path.exists(poster_frame):
                     cmd.extend(["-i", poster_frame])  # 添加封面图像作为第二个输入
                 
-                cmd.extend([
-                    "-c:v", "libx264",  # 视频编码器
-                    "-preset", "medium",  # 使用更平衡的预设，提高兼容性
-                    "-crf", "23",  # 使用更好的质量，提高兼容性
-                    "-threads", str(MAX_FFMPEG_THREADS),  # 使用配置常量限制线程数
-                    "-pix_fmt", "yuv420p",  # 像素格式
-                    "-r", "10",  # 输出帧率
-                    "-movflags", "+faststart",  # 优化网络播放
-                    "-profile:v", "high",  # 使用高配置文件提高兼容性
-                    "-level", "4.0",  # 提高级别
-                ])
-                
                 # 如果有封面图像，设置封面映射
                 if poster_frame and os.path.exists(poster_frame):
                     cmd.extend([
                         "-map", "0:v",  # 映射第一个输入的视频流
                         "-map", "1:v",  # 映射第二个输入（封面）的视频流
+                        "-c:v:0", "libx264",  # 主视频流使用H264编码器
                         "-c:v:1", "mjpeg",  # 封面使用MJPEG编码
+                        "-preset:v:0", "medium",  # 主视频流使用更平衡的预设
+                        "-crf:v:0", "23",  # 主视频流使用更好的质量
+                        "-profile:v:0", "high",  # 只对主视频流使用高配置文件
+                        "-level:v:0", "4.0",  # 只对主视频流提高级别
+                        "-pix_fmt:v:0", "yuv420p",  # 主视频流像素格式
+                        "-r:v:0", "10",  # 主视频流输出帧率
                         "-disposition:v:1", "attached_pic",  # 设置第二个视频流为附加图片（封面）
                     ])
+                else:
+                    cmd.extend([
+                        "-c:v", "libx264",  # 视频编码器
+                        "-preset", "medium",  # 使用更平衡的预设，提高兼容性
+                        "-crf", "23",  # 使用更好的质量，提高兼容性
+                        "-profile:v", "high",  # 使用高配置文件提高兼容性
+                        "-level", "4.0",  # 提高级别
+                        "-pix_fmt", "yuv420p",  # 像素格式
+                        "-r", "10",  # 输出帧率
+                    ])
+                
+                cmd.extend([
+                    "-threads", str(MAX_FFMPEG_THREADS),  # 使用配置常量限制线程数
+                    "-movflags", "+faststart",  # 优化网络播放
+                ])
                 
                 cmd.extend([
                     "-metadata", f"creation_time={datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}",  # 添加创建时间元数据
