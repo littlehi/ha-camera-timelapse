@@ -4,7 +4,7 @@
 
 set -e
 
-VERSION="0.4.1"
+VERSION="0.4.2"
 RELEASE_DIR="release"
 COMPONENT_DIR="custom_components/ha_camera_timelapse"
 
