@@ -18,6 +18,8 @@ from .const import (
     ATTR_DURATION,
     ATTR_OUTPUT_PATH,
     ATTR_TASK_ID,
+    ATTR_TRIGGER_MODE,
+    ATTR_TRIGGER_ENTITY_ID,
     ATTR_TASKS,
 )
 from .coordinator import TimelapseCoordinator
@@ -47,12 +49,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         interval = call.data.get(ATTR_INTERVAL)
         duration = call.data.get(ATTR_DURATION)
         output_path = call.data.get(ATTR_OUTPUT_PATH)
+        trigger_mode = call.data.get(ATTR_TRIGGER_MODE)
+        trigger_entity_id = call.data.get(ATTR_TRIGGER_ENTITY_ID)
         
         task_id = await coordinator.start_timelapse(
             camera_entity_id=entity_id,
             interval=interval,
             duration=duration,
             output_path=output_path,
+            trigger_mode=trigger_mode,
+            trigger_entity_id=trigger_entity_id,
         )
         
         # Return the task_id to the caller
@@ -79,6 +85,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             vol.Optional(ATTR_INTERVAL): cv.positive_int,
             vol.Optional(ATTR_DURATION): cv.positive_int,
             vol.Optional(ATTR_OUTPUT_PATH): cv.string,
+            vol.Optional(ATTR_TRIGGER_MODE): cv.string,
+            vol.Optional(ATTR_TRIGGER_ENTITY_ID): cv.entity_id,
         }),
     )
     

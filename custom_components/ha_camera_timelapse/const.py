@@ -13,6 +13,8 @@ ATTR_INTERVAL = "interval"
 ATTR_DURATION = "duration"
 ATTR_OUTPUT_PATH = "output_path"
 ATTR_TASK_ID = "task_id"
+ATTR_TRIGGER_MODE = "trigger_mode"
+ATTR_TRIGGER_ENTITY_ID = "trigger_entity_id"
 
 # Config flow attributes
 CONF_CAMERA_ENTITY_ID = "camera_entity_id"
@@ -20,12 +22,16 @@ CONF_DEFAULT_INTERVAL = "default_interval"
 CONF_DEFAULT_DURATION = "default_duration"
 CONF_DEFAULT_OUTPUT_PATH = "default_output_path"
 CONF_DEBUG_MODE = "debug_mode"
+CONF_TRIGGER_MODE = "trigger_mode"
+CONF_TRIGGER_ENTITY_ID = "trigger_entity_id"
 
 # Default values
 DEFAULT_INTERVAL = 60  # seconds
 DEFAULT_DURATION = 1440  # minutes (24 hours)
 DEFAULT_OUTPUT_PATH = "/media/local/timelapses"  # Media directory for HA frontend access
 DEFAULT_DEBUG = False  # Enable debug mode
+DEFAULT_TRIGGER_MODE = "interval"  # "interval" or "state_change"
+DEFAULT_TRIGGER_ENTITY_ID = None
 
 # Performance settings
 MAX_CONCURRENT_TASKS = 2  # 最大并发延时摄影任务数
@@ -48,6 +54,10 @@ STATUS_RECORDING = "recording"
 STATUS_PROCESSING = "processing"
 STATUS_UPLOADING = "uploading"
 STATUS_ERROR = "error"
+
+# Trigger modes
+TRIGGER_MODE_INTERVAL = "interval"
+TRIGGER_MODE_STATE_CHANGE = "state_change"
 
 # Google Photos settings
 CONF_UPLOAD_TO_GOOGLE_PHOTOS = "upload_to_google_photos"

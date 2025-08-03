@@ -78,8 +78,11 @@ class TimelapseSwitch(CoordinatorEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start timelapse recording."""
+        # 使用配置中的触发模式和触发实体
         await self.coordinator.start_timelapse(
-            camera_entity_id=self._camera_entity_id
+            camera_entity_id=self._camera_entity_id,
+            trigger_mode=self.coordinator._trigger_mode,
+            trigger_entity_id=self.coordinator._trigger_entity_id
         )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -117,6 +120,10 @@ class TimelapseSwitch(CoordinatorEntity, SwitchEntity):
                 attrs["interval"] = timelapse_data["interval"]
             if "duration" in timelapse_data:
                 attrs["duration"] = timelapse_data["duration"]
+            if "trigger_mode" in timelapse_data:
+                attrs["trigger_mode"] = timelapse_data["trigger_mode"]
+            if "trigger_entity_id" in timelapse_data:
+                attrs["trigger_entity_id"] = timelapse_data["trigger_entity_id"]
             if "start_time" in timelapse_data:
                 attrs["start_time"] = timelapse_data["start_time"]
             if "end_time" in timelapse_data:

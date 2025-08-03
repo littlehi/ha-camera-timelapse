@@ -4,7 +4,14 @@
       "WebFetch(domain:hacs.xyz)",
       "WebFetch(domain:github.com)",
       "Bash(mkdir:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(git push:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "WebFetch(domain:developers.home-assistant.io)",
+      "WebFetch(domain:www.home-assistant.io)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

@@ -1,7 +1,10 @@
 {
   "name": "Camera Timelapse",
   "content_in_root": false,
+  "filename": "ha_camera_timelapse",
+  "country": ["CN", "US", "GB"],
+  "homeassistant": "2023.1.0",
   "render_readme": true,
-  "homeassistant": "2023.6.0",
-  "hacs": "1.27.0"
+  "domains": ["camera", "switch"],
+  "iot_class": "Local Polling"
 }

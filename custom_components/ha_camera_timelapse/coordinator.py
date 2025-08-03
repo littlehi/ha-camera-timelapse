@@ -18,8 +18,9 @@ from functools import partial
 from .google_photos import async_upload_to_google_photos
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, Event, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.components.camera import Image, async_get_image
 import homeassistant.util.dt as dt_util
@@ -27,10 +28,14 @@ import homeassistant.util.dt as dt_util
 from .const import (
     DOMAIN,
     CONF_CAMERA_ENTITY_ID,
+    CONF_TRIGGER_MODE,
+    CONF_TRIGGER_ENTITY_ID,
     DEFAULT_INTERVAL,
     DEFAULT_DURATION,
     DEFAULT_OUTPUT_PATH,
     DEFAULT_DEBUG,
+    DEFAULT_TRIGGER_MODE,
+    DEFAULT_TRIGGER_ENTITY_ID,
     STATUS_IDLE,
     STATUS_RECORDING,
     STATUS_PROCESSING,
@@ -40,6 +45,8 @@ from .const import (
     MAX_CONCURRENT_TASKS,
     MAX_FRAME_BATCH,
     MAX_FFMPEG_THREADS,
+    TRIGGER_MODE_INTERVAL,
+    TRIGGER_MODE_STATE_CHANGE,
     CONF_UPLOAD_TO_GOOGLE_PHOTOS,
     CONF_GOOGLE_PHOTOS_ALBUM,
     CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
@@ -64,6 +71,17 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         self._timelapse_data = {}
         self._task_registry = {}  # New task registry for management
         self._debug = entry.options.get("debug", DEFAULT_DEBUG)
+        self._state_listeners = {}  # Track state change listeners
+        
+        # 触发模式配置
+        self._trigger_mode = entry.options.get(
+            CONF_TRIGGER_MODE,
+            entry.data.get(CONF_TRIGGER_MODE, DEFAULT_TRIGGER_MODE)
+        )
+        self._trigger_entity_id = entry.options.get(
+            CONF_TRIGGER_ENTITY_ID,
+            entry.data.get(CONF_TRIGGER_ENTITY_ID, DEFAULT_TRIGGER_ENTITY_ID)
+        )
         
         # Google Photos 上传设置
         self._upload_to_google_photos_enabled = entry.options.get(
@@ -129,7 +147,9 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         camera_entity_id: str,
         interval: Optional[int] = None, 
         duration: Optional[int] = None,
-        output_path: Optional[str] = None
+        output_path: Optional[str] = None,
+        trigger_mode: Optional[str] = None,
+        trigger_entity_id: Optional[str] = None
     ) -> str:
         """Start a timelapse recording. Returns task_id."""
         # 检查系统负载，限制并发任务数
@@ -187,6 +207,10 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 "default_output_path", 
                 self.config_entry.data.get("default_output_path", DEFAULT_OUTPUT_PATH)
             )
+        if trigger_mode is None:
+            trigger_mode = self._trigger_mode
+        if trigger_entity_id is None:
+            trigger_entity_id = self._trigger_entity_id
         
         # Ensure output directory exists and check permissions
         try:
@@ -226,6 +250,8 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             "output_path": output_path,
             "frame_dir": frame_dir,
             "output_file": output_file,
+            "trigger_mode": trigger_mode,
+            "trigger_entity_id": trigger_entity_id,
             "start_time": dt_util.now().isoformat(),
             "end_time": (dt_util.now() + timedelta(minutes=duration)).isoformat(),
             "frames_captured": 0,
@@ -254,7 +280,9 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 interval, 
                 duration, 
                 frame_dir, 
-                output_file
+                output_file,
+                trigger_mode,
+                trigger_entity_id
             )
         )
         self._timelapse_tasks[camera_entity_id] = task
@@ -298,6 +326,10 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             
             # Cancel the ongoing task
             self._timelapse_tasks[entity_id].cancel()
+            
+            # Clean up state listener if exists
+            if task_id:
+                self._cleanup_state_listener(task_id)
             
             # If we have captured frames, generate the video
             if frame_dir and output_file:
@@ -386,6 +418,251 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             })
         return tasks
     
+    @callback
+    def _state_change_listener(self, event: Event, task_id: str, camera_entity_id: str, frame_dir: str) -> None:
+        """Handle state change events for timelapse capture."""
+        if task_id not in self._task_registry:
+            return
+            
+        # 检查任务是否仍在录制状态
+        if self._task_registry[task_id].get("status") != STATUS_RECORDING:
+            return
+            
+        # 异步处理状态变化触发的帧捕获
+        self.hass.async_create_task(
+            self._capture_single_frame_on_state_change(task_id, camera_entity_id, frame_dir)
+        )
+    
+    async def _capture_single_frame_on_state_change(self, task_id: str, camera_entity_id: str, frame_dir: str) -> None:
+        """Capture a single frame when state changes."""
+        try:
+            if task_id not in self._task_registry:
+                return
+                
+            # 获取当前帧数
+            current_frames = self._task_registry[task_id].get("frames_captured", 0)
+            
+            _LOGGER.info("State change detected, capturing frame %d for %s", current_frames, camera_entity_id)
+            
+            # 捕获图像
+            image = await async_get_image(self.hass, camera_entity_id, timeout=7)
+            if not image or not image.content:
+                _LOGGER.error("No image content received from camera %s", camera_entity_id)
+                return
+            
+            # 保存帧
+            frame_path = os.path.join(frame_dir, f"frame_{current_frames:06d}.jpg")
+            async with aiofiles.open(frame_path, "wb") as f:
+                await f.write(image.content)
+            
+            # 验证文件已写入
+            if os.path.exists(frame_path) and os.path.getsize(frame_path) > 0:
+                new_frame_count = current_frames + 1
+                _LOGGER.info("Frame saved successfully: %s", frame_path)
+                
+                # 更新任务数据
+                if camera_entity_id in self._timelapse_data:
+                    self._timelapse_data[camera_entity_id]["frames_captured"] = new_frame_count
+                
+                # 更新任务注册表
+                self._task_registry[task_id]["frames_captured"] = new_frame_count
+                
+                # 触发数据更新
+                self.async_set_updated_data(self._timelapse_data)
+            else:
+                _LOGGER.error("Failed to save frame or file is empty: %s", frame_path)
+                
+        except Exception as e:
+            _LOGGER.error("Error capturing frame on state change: %s", e)
+    
+    def _cleanup_state_listener(self, task_id: str) -> None:
+        """Clean up state change listener for a task."""
+        if task_id in self._state_listeners:
+            try:
+                self._state_listeners[task_id]()
+                del self._state_listeners[task_id]
+                _LOGGER.debug("Cleaned up state listener for task %s", task_id)
+            except Exception as e:
+                _LOGGER.error("Error cleaning up state listener for task %s: %s", task_id, e)
+    
+    async def _capture_frames_interval_mode(
+        self,
+        task_id: str,
+        camera_entity_id: str,
+        interval: int,
+        start_time: datetime,
+        end_time: datetime,
+        frame_dir: str
+    ) -> int:
+        """Capture frames using interval mode."""
+        frame_count = 0
+        
+        while dt_util.now() < end_time:
+            try:
+                # Capture frame with retry mechanism
+                if self._debug:
+                    _LOGGER.debug("Capturing frame from camera: %s", camera_entity_id)
+                else:
+                    # Even in non-debug mode, log frame captures less frequently
+                    if frame_count % 10 == 0:
+                        _LOGGER.info("Capturing frame %d for %s", frame_count, camera_entity_id)
+                
+                # 优化重试机制，减少资源消耗
+                max_retries = 3
+                retry_count = 0
+                retry_delay = 2  # seconds
+                # 递增重试延迟以减少系统压力
+                retry_backoff = 1.5  # 每次重试增加1.5倍延迟
+                image = None
+                
+                # 使用信号量限制并发请求
+                camera_state = self.hass.states.get(camera_entity_id)
+                if not camera_state or camera_state.state == "unavailable":
+                    _LOGGER.error("Camera %s is unavailable, skipping frame", camera_entity_id)
+                else:
+                    while retry_count < max_retries:
+                        try:
+                            # 重新检查是否仍然可用，避免不必要的操作
+                            if retry_count > 0:
+                                camera_state = self.hass.states.get(camera_entity_id)
+                                if not camera_state or camera_state.state == "unavailable":
+                                    _LOGGER.error("Camera %s became unavailable, stopping retries", camera_entity_id)
+                                    break
+                            
+                            # 标准方法: 使用Home Assistant API，但减少超时时间
+                            try:
+                                # 减少超时时间，避免长时间阻塞
+                                image = await async_get_image(self.hass, camera_entity_id, timeout=7)
+                                if image and image.content:
+                                    _LOGGER.debug("Successfully captured image using standard HA API")
+                                    break
+                            except Exception as e1:
+                                _LOGGER.warning("Standard HA API failed: %s", e1)
+                            
+                            # 备选方法: 直接访问摄像头流
+                            if retry_count == max_retries - 1:  # 只在最后一次重试时尝试此方法，减少资源使用
+                                try:
+                                    camera_data = self.hass.data.get("camera", {})
+                                    camera_entity = camera_data.get(camera_entity_id.split(".")[1], None)
+                                    
+                                    if camera_entity and hasattr(camera_entity, "stream_source"):
+                                        stream_source = camera_entity.stream_source
+                                        if stream_source and stream_source.startswith(("http://", "https://")):
+                                            _LOGGER.info("Trying direct stream access as last resort")
+                                            
+                                            # 使用更短的超时
+                                            async with aiohttp.ClientSession() as session:
+                                                async with session.get(stream_source, timeout=7) as resp:
+                                                    if resp.status == 200:
+                                                        content = await resp.read()
+                                                        if content:
+                                                            from homeassistant.components.camera import Image
+                                                            image = Image(content, "image/jpeg")
+                                                            _LOGGER.info("Direct stream access successful")
+                                                            break
+                                except Exception as e2:
+                                    _LOGGER.warning("Direct stream access failed: %s", e2)
+                                
+                            # 增加重试延迟
+                            retry_count += 1
+                            if retry_count < max_retries:
+                                current_delay = retry_delay * (retry_backoff ** (retry_count - 1))
+                                _LOGGER.warning("Image capture failed, retrying (%d/%d) in %.1f seconds", 
+                                              retry_count, max_retries, current_delay)
+                                await asyncio.sleep(current_delay)
+                            else:
+                                _LOGGER.error("Failed to capture frame after %d retries", max_retries)
+                        
+                        except Exception as e:
+                            retry_count += 1
+                            if retry_count < max_retries:
+                                current_delay = retry_delay * (retry_backoff ** (retry_count - 1))
+                                _LOGGER.warning("Failed to capture frame (%d/%d), retrying in %.1f seconds: %s", 
+                                              retry_count, max_retries, current_delay, str(e))
+                                await asyncio.sleep(current_delay)
+                            else:
+                                _LOGGER.error("Failed to capture frame after %d retries: %s", 
+                                            max_retries, str(e))
+                
+                if not image or not image.content:
+                    _LOGGER.error("No image content received from camera %s after retries", camera_entity_id)
+                    continue
+                
+                if self._debug:
+                    _LOGGER.debug("Image captured, size: %d bytes", len(image.content))
+                
+                # Save frame to file
+                frame_path = os.path.join(frame_dir, f"frame_{frame_count:06d}.jpg")
+                if self._debug:
+                    _LOGGER.debug("Saving frame to %s", frame_path)
+                
+                async with aiofiles.open(frame_path, "wb") as f:
+                    await f.write(image.content)
+                
+                # Verify file was written
+                if os.path.exists(frame_path) and os.path.getsize(frame_path) > 0:
+                    if self._debug:
+                        _LOGGER.debug("Frame saved successfully: %s (%d bytes)", 
+                                     frame_path, os.path.getsize(frame_path))
+                    frame_count += 1
+                else:
+                    _LOGGER.error("Failed to save frame or file is empty: %s", frame_path)
+                
+                # Update timelapse data
+                elapsed = (dt_util.now() - start_time).total_seconds()
+                total_duration = (end_time - start_time).total_seconds()
+                progress = min(100, int(elapsed / total_duration * 100))
+                time_remaining = max(0, total_duration - elapsed)
+                
+                self._timelapse_data[camera_entity_id].update({
+                    "frames_captured": frame_count,
+                    "progress": progress,
+                    "time_remaining": int(time_remaining),
+                })
+                
+                # Update task registry
+                if task_id in self._task_registry:
+                    self._task_registry[task_id].update({
+                        "frames_captured": frame_count,
+                        "progress": progress,
+                        "time_remaining": int(time_remaining),
+                    })
+                
+                self.async_set_updated_data(self._timelapse_data)
+                
+            except HomeAssistantError as ha_err:
+                _LOGGER.error("Home Assistant error: %s", ha_err)
+                _LOGGER.exception("Home Assistant error details")
+                # If we have a Home Assistant error, wait a bit longer before retrying
+                await asyncio.sleep(min(interval, 10))
+                continue
+            except Exception as e:
+                _LOGGER.error("Error capturing frame: %s", e)
+                _LOGGER.exception("Detailed exception information")
+                # Try to continue with next frame after a short delay
+                await asyncio.sleep(2)
+                continue
+            
+            # Wait for next interval
+            if self._debug:
+                _LOGGER.debug("Waiting %d seconds until next frame capture", interval)
+            await asyncio.sleep(interval)
+        
+        return frame_count
+    
+    async def async_shutdown(self) -> None:
+        """Shutdown coordinator and clean up resources."""
+        # Clean up all state listeners
+        for task_id in list(self._state_listeners.keys()):
+            self._cleanup_state_listener(task_id)
+        
+        # Cancel all running tasks
+        for task in self._timelapse_tasks.values():
+            if not task.done():
+                task.cancel()
+        
+        _LOGGER.info("Timelapse coordinator shutdown complete")
+    
     async def _capture_timelapse(
         self,
         task_id: str,
@@ -393,7 +670,9 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         interval: int, 
         duration: int, 
         frame_dir: str,
-        output_file: str
+        output_file: str,
+        trigger_mode: str = TRIGGER_MODE_INTERVAL,
+        trigger_entity_id: Optional[str] = None
     ) -> None:
         """Capture frames for timelapse."""
         try:
@@ -402,161 +681,72 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             
             frame_count = 0
             
-            _LOGGER.info("Starting timelapse capture for camera %s, frames every %d seconds for %d minutes", 
-                      camera_entity_id, interval, duration)
+            _LOGGER.info("Starting timelapse capture for camera %s, trigger mode: %s, duration: %d minutes", 
+                      camera_entity_id, trigger_mode, duration)
             _LOGGER.info("Frames will be saved to %s", frame_dir)
             _LOGGER.info("Final timelapse will be saved as %s", output_file)
             
-            while dt_util.now() < end_time:
-                try:
-                    # Capture frame with retry mechanism
-                    if self._debug:
-                        _LOGGER.debug("Capturing frame from camera: %s", camera_entity_id)
-                    else:
-                        # Even in non-debug mode, log frame captures less frequently
-                        if frame_count % 10 == 0:
-                            _LOGGER.info("Capturing frame %d for %s", frame_count, camera_entity_id)
-                    
-                    # 优化重试机制，减少资源消耗
-                    max_retries = 3
-                    retry_count = 0
-                    retry_delay = 2  # seconds
-                    # 递增重试延迟以减少系统压力
-                    retry_backoff = 1.5  # 每次重试增加1.5倍延迟
-                    image = None
-                    
-                    # 使用信号量限制并发请求
-                    camera_state = self.hass.states.get(camera_entity_id)
-                    if not camera_state or camera_state.state == "unavailable":
-                        _LOGGER.error("Camera %s is unavailable, skipping frame", camera_entity_id)
-                    else:
-                        while retry_count < max_retries:
-                            try:
-                                # 重新检查是否仍然可用，避免不必要的操作
-                                if retry_count > 0:
-                                    camera_state = self.hass.states.get(camera_entity_id)
-                                    if not camera_state or camera_state.state == "unavailable":
-                                        _LOGGER.error("Camera %s became unavailable, stopping retries", camera_entity_id)
-                                        break
-                                
-                                # 标准方法: 使用Home Assistant API，但减少超时时间
-                                try:
-                                    # 减少超时时间，避免长时间阻塞
-                                    image = await async_get_image(self.hass, camera_entity_id, timeout=7)
-                                    if image and image.content:
-                                        _LOGGER.debug("Successfully captured image using standard HA API")
-                                        break
-                                except Exception as e1:
-                                    _LOGGER.warning("Standard HA API failed: %s", e1)
-                                
-                                # 备选方法: 直接访问摄像头流
-                                if retry_count == max_retries - 1:  # 只在最后一次重试时尝试此方法，减少资源使用
-                                    try:
-                                        camera_data = self.hass.data.get("camera", {})
-                                        camera_entity = camera_data.get(camera_entity_id.split(".")[1], None)
-                                        
-                                        if camera_entity and hasattr(camera_entity, "stream_source"):
-                                            stream_source = camera_entity.stream_source
-                                            if stream_source and stream_source.startswith(("http://", "https://")):
-                                                _LOGGER.info("Trying direct stream access as last resort")
-                                                
-                                                # 使用更短的超时
-                                                async with aiohttp.ClientSession() as session:
-                                                    async with session.get(stream_source, timeout=7) as resp:
-                                                        if resp.status == 200:
-                                                            content = await resp.read()
-                                                            if content:
-                                                                from homeassistant.components.camera import Image
-                                                                image = Image(content, "image/jpeg")
-                                                                _LOGGER.info("Direct stream access successful")
-                                                                break
-                                    except Exception as e2:
-                                        _LOGGER.warning("Direct stream access failed: %s", e2)
-                                    
-                                # 增加重试延迟
-                                retry_count += 1
-                                if retry_count < max_retries:
-                                    current_delay = retry_delay * (retry_backoff ** (retry_count - 1))
-                                    _LOGGER.warning("Image capture failed, retrying (%d/%d) in %.1f seconds", 
-                                                  retry_count, max_retries, current_delay)
-                                    await asyncio.sleep(current_delay)
-                                else:
-                                    _LOGGER.error("Failed to capture frame after %d retries", max_retries)
-                            
-                            except Exception as e:
-                                retry_count += 1
-                                if retry_count < max_retries:
-                                    current_delay = retry_delay * (retry_backoff ** (retry_count - 1))
-                                    _LOGGER.warning("Failed to capture frame (%d/%d), retrying in %.1f seconds: %s", 
-                                                  retry_count, max_retries, current_delay, str(e))
-                                    await asyncio.sleep(current_delay)
-                                else:
-                                    _LOGGER.error("Failed to capture frame after %d retries: %s", 
-                                                max_retries, str(e))
-                    
-                    if not image or not image.content:
-                        _LOGGER.error("No image content received from camera %s after retries", camera_entity_id)
-                        continue
-                    
-                    if self._debug:
-                        _LOGGER.debug("Image captured, size: %d bytes", len(image.content))
-                    
-                    # Save frame to file
-                    frame_path = os.path.join(frame_dir, f"frame_{frame_count:06d}.jpg")
-                    if self._debug:
-                        _LOGGER.debug("Saving frame to %s", frame_path)
-                    
-                    async with aiofiles.open(frame_path, "wb") as f:
-                        await f.write(image.content)
-                    
-                    # Verify file was written
-                    if os.path.exists(frame_path) and os.path.getsize(frame_path) > 0:
-                        if self._debug:
-                            _LOGGER.debug("Frame saved successfully: %s (%d bytes)", 
-                                         frame_path, os.path.getsize(frame_path))
-                        frame_count += 1
-                    else:
-                        _LOGGER.error("Failed to save frame or file is empty: %s", frame_path)
-                    
-                    # Update timelapse data
+            if trigger_mode == TRIGGER_MODE_STATE_CHANGE:
+                if not trigger_entity_id:
+                    _LOGGER.error("State change trigger mode requires trigger_entity_id")
+                    raise HomeAssistantError("State change trigger mode requires trigger_entity_id")
+                
+                _LOGGER.info("Setting up state change listener for entity: %s", trigger_entity_id)
+                
+                # 设置状态变化监听器
+                listener = async_track_state_change_event(
+                    self.hass,
+                    [trigger_entity_id],
+                    partial(self._state_change_listener, task_id=task_id, camera_entity_id=camera_entity_id, frame_dir=frame_dir)
+                )
+                self._state_listeners[task_id] = listener
+                
+                # 对于状态变化模式，我们只需要等待直到持续时间结束
+                _LOGGER.info("State change mode: waiting for %d minutes or until stopped", duration)
+                while dt_util.now() < end_time:
+                    # 检查任务是否被取消
+                    if task_id not in self._task_registry or self._task_registry[task_id].get("status") != STATUS_RECORDING:
+                        break
+                        
+                    # 更新进度和剩余时间
                     elapsed = (dt_util.now() - start_time).total_seconds()
                     total_duration = (end_time - start_time).total_seconds()
                     progress = min(100, int(elapsed / total_duration * 100))
                     time_remaining = max(0, total_duration - elapsed)
                     
+                    current_frames = self._task_registry[task_id].get("frames_captured", 0)
+                    
                     self._timelapse_data[camera_entity_id].update({
-                        "frames_captured": frame_count,
+                        "frames_captured": current_frames,
                         "progress": progress,
                         "time_remaining": int(time_remaining),
                     })
                     
-                    # Update task registry
-                    if task_id in self._task_registry:
-                        self._task_registry[task_id].update({
-                            "frames_captured": frame_count,
-                            "progress": progress,
-                            "time_remaining": int(time_remaining),
-                        })
+                    self._task_registry[task_id].update({
+                        "frames_captured": current_frames,
+                        "progress": progress,
+                        "time_remaining": int(time_remaining),
+                    })
                     
                     self.async_set_updated_data(self._timelapse_data)
                     
-                except HomeAssistantError as ha_err:
-                    _LOGGER.error("Home Assistant error: %s", ha_err)
-                    _LOGGER.exception("Home Assistant error details")
-                    # If we have a Home Assistant error, wait a bit longer before retrying
-                    await asyncio.sleep(min(interval, 10))
-                    continue
-                except Exception as e:
-                    _LOGGER.error("Error capturing frame: %s", e)
-                    _LOGGER.exception("Detailed exception information")
-                    # Try to continue with next frame after a short delay
-                    await asyncio.sleep(2)
-                    continue
+                    # 每10秒检查一次
+                    await asyncio.sleep(10)
                 
-                # Wait for next interval
-                if self._debug:
-                    _LOGGER.debug("Waiting %d seconds until next frame capture", interval)
-                await asyncio.sleep(interval)
+                # 清理状态监听器
+                if task_id in self._state_listeners:
+                    self._state_listeners[task_id]()
+                    del self._state_listeners[task_id]
+                
+                frame_count = self._task_registry[task_id].get("frames_captured", 0)
+                _LOGGER.info("State change mode completed. Total frames captured: %d", frame_count)
+                
+            else:
+                # 原有的间隔模式逻辑
+                _LOGGER.info("Interval mode: capturing frames every %d seconds", interval)
+                frame_count = await self._capture_frames_interval_mode(
+                    task_id, camera_entity_id, interval, start_time, end_time, frame_dir
+                )
             
             # Log completion of frame capture
             _LOGGER.info("Finished capturing frames for %s. Total frames: %d", 

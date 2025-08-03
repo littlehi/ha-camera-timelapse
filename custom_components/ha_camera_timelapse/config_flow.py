@@ -18,6 +18,8 @@ from .const import (
     CONF_DEFAULT_DURATION,
     CONF_DEFAULT_OUTPUT_PATH,
     CONF_DEBUG_MODE,
+    CONF_TRIGGER_MODE,
+    CONF_TRIGGER_ENTITY_ID,
     CONF_UPLOAD_TO_GOOGLE_PHOTOS,
     CONF_GOOGLE_PHOTOS_ALBUM,
     CONF_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
@@ -26,10 +28,14 @@ from .const import (
     DEFAULT_DURATION,
     DEFAULT_OUTPUT_PATH,
     DEFAULT_DEBUG,
+    DEFAULT_TRIGGER_MODE,
+    DEFAULT_TRIGGER_ENTITY_ID,
     DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS,
     DEFAULT_GOOGLE_PHOTOS_ALBUM,
     DEFAULT_GOOGLE_PHOTOS_CONFIG_ENTRY_ID,
     DEFAULT_DELETE_AFTER_UPLOAD,
+    TRIGGER_MODE_INTERVAL,
+    TRIGGER_MODE_STATE_CHANGE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -124,8 +130,20 @@ class CameraTimelapseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_CAMERA_ENTITY_ID): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="camera")
                 ),
+                vol.Optional(CONF_TRIGGER_MODE, default=DEFAULT_TRIGGER_MODE): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"value": TRIGGER_MODE_INTERVAL, "label": "固定时间间隔"},
+                            {"value": TRIGGER_MODE_STATE_CHANGE, "label": "实体状态变化"},
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
                 vol.Optional(CONF_DEFAULT_INTERVAL, default=DEFAULT_INTERVAL): cv.positive_int,
                 vol.Optional(CONF_DEFAULT_DURATION, default=DEFAULT_DURATION): cv.positive_int,
+                vol.Optional(CONF_TRIGGER_ENTITY_ID): selector.EntitySelector(
+                    selector.EntitySelectorConfig()
+                ),
                 vol.Optional(CONF_DEFAULT_OUTPUT_PATH, default=DEFAULT_OUTPUT_PATH): cv.string,
                 vol.Optional(CONF_DEBUG_MODE, default=DEFAULT_DEBUG): cv.boolean,
                 vol.Optional(CONF_UPLOAD_TO_GOOGLE_PHOTOS, default=DEFAULT_UPLOAD_TO_GOOGLE_PHOTOS): cv.boolean,
@@ -173,6 +191,21 @@ class CameraTimelapseOptionsFlow(config_entries.OptionsFlow):
         
         options = {
             vol.Optional(
+                CONF_TRIGGER_MODE,
+                default=self.config_entry.options.get(
+                    CONF_TRIGGER_MODE,
+                    self.config_entry.data.get(CONF_TRIGGER_MODE, DEFAULT_TRIGGER_MODE)
+                ),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {"value": TRIGGER_MODE_INTERVAL, "label": "固定时间间隔"},
+                        {"value": TRIGGER_MODE_STATE_CHANGE, "label": "实体状态变化"},
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
                 CONF_DEFAULT_INTERVAL,
                 default=self.config_entry.options.get(
                     CONF_DEFAULT_INTERVAL, 
@@ -186,6 +219,15 @@ class CameraTimelapseOptionsFlow(config_entries.OptionsFlow):
                     self.config_entry.data.get(CONF_DEFAULT_DURATION, DEFAULT_DURATION)
                 ),
             ): cv.positive_int,
+            vol.Optional(
+                CONF_TRIGGER_ENTITY_ID,
+                default=self.config_entry.options.get(
+                    CONF_TRIGGER_ENTITY_ID,
+                    self.config_entry.data.get(CONF_TRIGGER_ENTITY_ID, DEFAULT_TRIGGER_ENTITY_ID)
+                ),
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig()
+            ),
             vol.Optional(
                 CONF_DEFAULT_OUTPUT_PATH,
                 default=self.config_entry.options.get(

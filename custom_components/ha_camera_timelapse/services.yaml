@@ -13,9 +13,26 @@ start_timelapse:
       selector:
         entity:
           domain: camera
+    trigger_mode:
+      name: Trigger Mode
+      description: How frames are captured - by interval or state change.
+      example: "interval"
+      default: "interval"
+      selector:
+        select:
+          options:
+            - value: "interval"
+              label: "固定时间间隔"
+            - value: "state_change"
+              label: "实体状态变化"
+    trigger_entity_id:
+      name: Trigger Entity
+      description: Entity whose state changes trigger frame capture (required for state_change mode).
+      selector:
+        entity: {}
     interval:
       name: Interval
-      description: Time between frames in seconds.
+      description: Time between frames in seconds (for interval mode).
       example: "60"
       default: 60
       selector:
