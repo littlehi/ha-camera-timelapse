@@ -454,13 +454,34 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         # 检查任务是否仍在录制状态
         if self._task_registry[task_id].get("status") != STATUS_RECORDING:
             return
+        
+        # 检查状态值是否真正改变
+        old_state = event.data.get("old_state")
+        new_state = event.data.get("new_state")
+        
+        if old_state is None or new_state is None:
+            _LOGGER.debug("State change event missing old_state or new_state, skipping")
+            return
+            
+        # 比较状态值，只有真正改变时才触发
+        old_value = old_state.state
+        new_value = new_state.state
+        
+        # 检查值是否真正改变
+        if not self._is_significant_change(old_value, new_value):
+            _LOGGER.debug("State change detected but value unchanged or insignificant (%s -> %s), skipping frame capture", 
+                         old_value, new_value)
+            return
+            
+        _LOGGER.info("Significant state value change from '%s' to '%s', triggering frame capture", 
+                    old_value, new_value)
             
         # 异步处理状态变化触发的帧捕获
         self.hass.async_create_task(
-            self._capture_single_frame_on_state_change(task_id, camera_entity_id, frame_dir)
+            self._capture_single_frame_on_state_change(task_id, camera_entity_id, frame_dir, old_value, new_value)
         )
     
-    async def _capture_single_frame_on_state_change(self, task_id: str, camera_entity_id: str, frame_dir: str) -> None:
+    async def _capture_single_frame_on_state_change(self, task_id: str, camera_entity_id: str, frame_dir: str, old_value: str = None, new_value: str = None) -> None:
         """Capture a single frame when state changes."""
         try:
             if task_id not in self._task_registry:
@@ -469,7 +490,11 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             # 获取当前帧数
             current_frames = self._task_registry[task_id].get("frames_captured", 0)
             
-            _LOGGER.info("State change detected, capturing frame %d for %s", current_frames, camera_entity_id)
+            if old_value is not None and new_value is not None:
+                _LOGGER.info("State changed from '%s' to '%s', capturing frame %d for %s", 
+                           old_value, new_value, current_frames, camera_entity_id)
+            else:
+                _LOGGER.info("State change detected, capturing frame %d for %s", current_frames, camera_entity_id)
             
             # 捕获图像
             image = await async_get_image(self.hass, camera_entity_id, timeout=7)
@@ -501,6 +526,45 @@ class TimelapseCoordinator(DataUpdateCoordinator):
                 
         except Exception as e:
             _LOGGER.error("Error capturing frame on state change: %s", e)
+    
+    def _is_significant_change(self, old_value: str, new_value: str) -> bool:
+        """Check if the state change is significant enough to trigger frame capture."""
+        # 基本检查：值是否相同
+        if old_value == new_value:
+            return False
+        
+        # 检查是否为 "unknown" 或 "unavailable" 状态
+        if new_value in ["unknown", "unavailable", "None", None]:
+            _LOGGER.debug("New state is unknown/unavailable, skipping")
+            return False
+            
+        if old_value in ["unknown", "unavailable", "None", None]:
+            # 从未知状态变为已知状态，认为是有效变化
+            _LOGGER.debug("State changed from unknown to known value, triggering")
+            return True
+        
+        # 对于数值类型，可以添加最小变化阈值检查
+        try:
+            old_num = float(old_value)
+            new_num = float(new_value)
+            
+            # 对于数值，可以设置最小变化阈值（这里设为0，即任何数值变化都触发）
+            # 如果需要，可以在配置中添加 min_change_threshold 参数
+            min_threshold = 0.0
+            change = abs(new_num - old_num)
+            
+            if change <= min_threshold:
+                _LOGGER.debug("Numeric change too small (%.3f), skipping", change)
+                return False
+                
+            _LOGGER.debug("Numeric change detected: %.3f -> %.3f (change: %.3f)", 
+                         old_num, new_num, change)
+            return True
+            
+        except (ValueError, TypeError):
+            # 非数值类型，只要值不同就认为是有效变化
+            _LOGGER.debug("Non-numeric state change: '%s' -> '%s'", old_value, new_value)
+            return True
     
     def _cleanup_state_listener(self, task_id: str) -> None:
         """Clean up state change listener for a task."""
