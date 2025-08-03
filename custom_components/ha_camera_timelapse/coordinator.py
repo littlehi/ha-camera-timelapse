@@ -73,15 +73,36 @@ class TimelapseCoordinator(DataUpdateCoordinator):
         self._debug = entry.options.get("debug", DEFAULT_DEBUG)
         self._state_listeners = {}  # Track state change listeners
         
-        # 触发模式配置
-        self._trigger_mode = entry.options.get(
-            CONF_TRIGGER_MODE,
-            entry.data.get(CONF_TRIGGER_MODE, DEFAULT_TRIGGER_MODE)
-        )
-        self._trigger_entity_id = entry.options.get(
-            CONF_TRIGGER_ENTITY_ID,
-            entry.data.get(CONF_TRIGGER_ENTITY_ID, DEFAULT_TRIGGER_ENTITY_ID)
-        )
+        # 触发模式配置 - 优先使用 options，然后是 data，最后是默认值
+        # 首先尝试从 options 读取
+        trigger_mode_from_options = entry.options.get(CONF_TRIGGER_MODE)
+        trigger_entity_from_options = entry.options.get(CONF_TRIGGER_ENTITY_ID)
+        
+        # 然后尝试从 data 读取
+        trigger_mode_from_data = entry.data.get(CONF_TRIGGER_MODE)
+        trigger_entity_from_data = entry.data.get(CONF_TRIGGER_ENTITY_ID)
+        
+        # 确定最终值
+        self._trigger_mode = trigger_mode_from_options or trigger_mode_from_data or DEFAULT_TRIGGER_MODE
+        self._trigger_entity_id = trigger_entity_from_options or trigger_entity_from_data or DEFAULT_TRIGGER_ENTITY_ID
+        
+        # 详细调试日志
+        _LOGGER.info("=== Trigger Mode Configuration Debug ===")
+        _LOGGER.info("From options: trigger_mode=%s, trigger_entity_id=%s", 
+                    trigger_mode_from_options, trigger_entity_from_options)
+        _LOGGER.info("From data: trigger_mode=%s, trigger_entity_id=%s", 
+                    trigger_mode_from_data, trigger_entity_from_data)
+        _LOGGER.info("Final values: trigger_mode=%s, trigger_entity_id=%s", 
+                    self._trigger_mode, self._trigger_entity_id)
+        _LOGGER.info("Config entry data: %s", entry.data)
+        _LOGGER.info("Config entry options: %s", entry.options)
+        _LOGGER.info("=== End Debug ===")
+        
+        # 验证触发模式值
+        if self._trigger_mode not in [TRIGGER_MODE_INTERVAL, TRIGGER_MODE_STATE_CHANGE]:
+            _LOGGER.warning("Invalid trigger mode '%s', falling back to default '%s'", 
+                          self._trigger_mode, DEFAULT_TRIGGER_MODE)
+            self._trigger_mode = DEFAULT_TRIGGER_MODE
         
         # Google Photos 上传设置
         self._upload_to_google_photos_enabled = entry.options.get(
@@ -211,6 +232,12 @@ class TimelapseCoordinator(DataUpdateCoordinator):
             trigger_mode = self._trigger_mode
         if trigger_entity_id is None:
             trigger_entity_id = self._trigger_entity_id
+            
+        # 调试日志
+        _LOGGER.info("start_timelapse called with: trigger_mode=%s, trigger_entity_id=%s", 
+                    trigger_mode, trigger_entity_id)
+        _LOGGER.info("Using final values: trigger_mode=%s, trigger_entity_id=%s", 
+                    trigger_mode, trigger_entity_id)
         
         # Ensure output directory exists and check permissions
         try:

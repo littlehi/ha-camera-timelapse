@@ -78,6 +78,13 @@ class TimelapseSwitch(CoordinatorEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start timelapse recording."""
+        # 详细调试日志
+        _LOGGER.info("=== Switch Turn On Debug ===")
+        _LOGGER.info("Camera entity: %s", self._camera_entity_id)
+        _LOGGER.info("Coordinator trigger_mode: %s", self.coordinator._trigger_mode)
+        _LOGGER.info("Coordinator trigger_entity_id: %s", self.coordinator._trigger_entity_id)
+        _LOGGER.info("=== Starting timelapse ===")
+        
         # 使用配置中的触发模式和触发实体
         await self.coordinator.start_timelapse(
             camera_entity_id=self._camera_entity_id,
